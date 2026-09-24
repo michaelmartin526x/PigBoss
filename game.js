@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as spine from 'spine-threejs';
 
 const MODES=[['A',410],['B',410],['C',45],['D',45],['E',45],['F',45]];
 const paylines=[[[0,1],[1,1],[2,1],[3,1]],[[0,0],[1,0],[2,0],[3,0]],[[0,2],[1,2],[2,2],[3,2]],[[0,3],[1,3],[2,3],[3,3]],[[0,0],[1,1],[2,2],[3,3]],[[0,3],[1,2],[2,1],[3,0]],[[0,1],[1,0],[2,0],[3,0]],[[0,2],[1,1],[2,1],[3,1]],[[0,3],[1,2],[2,2],[3,2]],[[0,1],[1,0],[2,1],[3,0]],[[0,2],[1,1],[2,2],[3,1]],[[0,3],[1,2],[2,3],[3,2]]];
@@ -31,8 +32,171 @@ for(let c=0;c<4;c++){
 
 const VIEW_W=660,VIEW_H=580,scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-VIEW_W/2,VIEW_W/2,VIEW_H/2,-VIEW_H/2,.1,10);camera.position.z=5;
-const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);fxLayer.appendChild(renderer.domElement);
+const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;fxLayer.appendChild(renderer.domElement);
 function resize(){renderer.setSize(Math.max(1,host.clientWidth),Math.max(1,host.clientHeight),false)}addEventListener('resize',resize);resize();
+
+// v0.19 — Spine is a presentation layer only. Reel maths/motion remain PNG/DOM driven.
+// The 660x580 Three.js view is exactly 4 x (165x145), matching the authored Spine symbols.
+const SPINE_SYMBOLS=['A','C','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z'];
+class SpineSymbolManager{
+  constructor(){this.ready=false;this.data=new Map();this.cells=Array.from({length:4},()=>Array(4).fill(null));this.assetManager=null;this.last=performance.now();this.eventLog=[];this.lastError='';this.cellErrors=[];this.focusTimer=null;}
+  async init(){
+    try{
+      this.assetManager=new spine.AssetManager('assets/spine/');
+      await Promise.all([
+        this.assetManager.loadTextureAtlasAsync('Symbols.atlas'),
+        ...SPINE_SYMBOLS.map(sym=>this.assetManager.loadJsonAsync(`${sym}.json`))
+      ]);
+      const atlas=this.assetManager.require('Symbols.atlas');
+      const loader=new spine.AtlasAttachmentLoader(atlas);
+      for(const sym of SPINE_SYMBOLS){
+        const parser=new spine.SkeletonJson(loader); parser.scale=1;
+        this.data.set(sym,parser.readSkeletonData(this.assetManager.require(`${sym}.json`)));
+      }
+      this.ready=true;
+      return true;
+    }catch(err){
+      console.error('Spine initialization failed; PNG fallback remains active.',err);
+      this.lastError=`INIT: ${err?.message||err}`; this.ready=false; return false;
+    }
+  }
+  makeMesh(sym,c,r){
+    const skeletonData=this.data.get(sym); if(!skeletonData)return null;
+    let mesh;
+    try{
+      mesh=new spine.SkeletonMesh({
+        skeletonData,
+        twoColorTint:false,
+        materialFactory:(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true;return new THREE.MeshBasicMaterial(parameters)}
+      });
+    }catch(_){
+      // Compatibility path for older 4.3 patch APIs.
+      mesh=new spine.SkeletonMesh(skeletonData,(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true});
+    }
+    mesh.position.set(-VIEW_W/2+82.5+c*165,VIEW_H/2-72.5-r*145,0);
+    mesh.zOffset=0.0001; mesh.visible=false; scene.add(mesh); return mesh;
+  }
+  removeCell(c,r){
+    const old=this.cells[c][r]; if(!old)return;
+    scene.remove(old.mesh); if(typeof old.mesh.dispose==='function')old.mesh.dispose(); this.cells[c][r]=null;
+  }
+  resetToPng(){
+    for(let c=0;c<4;c++)for(let r=0;r<4;r++){
+      this.removeCell(c,r); const img=slots[c]?.[r+1]; if(img)img.style.opacity='1';
+    }
+  }
+  showCell(c,r,sym,animation='land'){
+    if(!this.ready||!this.data.has(sym))return false;
+    try{
+      this.removeCell(c,r);
+      const mesh=this.makeMesh(sym,c,r); if(!mesh)return false;
+      // Configure the Spine instance completely BEFORE hiding the PNG fallback.
+      mesh.visible=true; mesh.state.clearTracks();
+      mesh.state.setAnimation(0,animation,false); mesh.state.addAnimation(0,'idle',true,0);
+      // Build the first posed geometry immediately; don't wait for the global render tick.
+      mesh.update(0);
+      this.cells[c][r]={mesh,sym,brightness:1,targetBrightness:1};
+      const img=slots[c]?.[r+1]; if(img)img.style.opacity='0';
+      return true;
+    }catch(err){
+      console.error(`Spine cell ${c}:${r} (${sym}) failed; keeping PNG.`,err);
+      this.lastError=`R${c+1}/row${r+1} ${sym}: ${err?.message||err}`; this.cellErrors.push(this.lastError); this.cellErrors=this.cellErrors.slice(-8);
+      try{this.removeCell(c,r)}catch(_){}
+      const img=slots[c]?.[r+1]; if(img)img.style.opacity='1';
+      return false;
+    }
+  }
+  cellCount(){let n=0;for(let c=0;c<4;c++)for(let r=0;r<4;r++)if(this.cells[c]?.[r])n++;return n;}
+  ensureMatrix(matrix,animation='idle'){
+    const report={requested:16,created:0,existing:0,failed:0};
+    if(!this.ready||!matrix){report.failed=16;return report;}
+    for(let c=0;c<4;c++)for(let r=0;r<4;r++){
+      const sym=matrix[c][r],cell=this.cells[c]?.[r];
+      if(cell?.sym===sym){report.existing++;continue;}
+      if(this.showCell(c,r,sym,animation))report.created++;else report.failed++;
+    }
+    return report;
+  }
+  cellDiagnostic(matrix){
+    const lines=[`SPINE CELLS: ${this.cellCount()} / 16 · runtime ${this.ready?'READY':'NOT READY'}`];
+    if(matrix){for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r],sym=matrix[c][r];lines.push(`R${c+1}/row${r+1} ${sym}: ${cell?`ACTIVE ${cell.sym}`:'MISSING'}`)}}
+    if(this.lastError)lines.push(`LAST SPINE ERROR: ${this.lastError}`);
+    return lines.join('\n');
+  }
+  // Fire-and-forget presentation hook. This method NEVER throws into the reel state machine.
+  landColumn(c,symbols){
+    if(!this.ready)return;
+    try{for(let r=0;r<4;r++)this.showCell(c,r,symbols[r],'land')}
+    catch(err){console.error(`Spine column ${c} presentation failed. Gameplay continues.`,err)}
+  }
+  setCellBrightness(cell,value){
+    if(!cell?.mesh?.skeleton?.color)return;
+    const v=Math.max(0,Math.min(1,value));
+    cell.mesh.skeleton.color.r=v;cell.mesh.skeleton.color.g=v;cell.mesh.skeleton.color.b=v;
+  }
+  focusWinningCells(seen,holdMs=950){
+    if(this.focusTimer){clearTimeout(this.focusTimer);this.focusTimer=null}
+    for(let c=0;c<4;c++)for(let r=0;r<4;r++){
+      const cell=this.cells[c]?.[r];if(!cell)continue;
+      cell.targetBrightness=seen.has(`${c}:${r}`)?1:0.60;
+    }
+    this.focusTimer=setTimeout(()=>{
+      for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r];if(cell)cell.targetBrightness=1}
+      this.focusTimer=null;
+    },holdMs);
+  }
+  playWin(positions,source='RESULT'){
+    if(!this.ready)return {requested:0,played:0,missing:0};
+    const seen=new Set(); for(const [c,r] of positions)seen.add(`${c}:${r}`);
+    if(seen.size)this.focusWinningCells(seen);
+    let played=0,missing=0; const events=[]; const routed=new Set();
+    for(const [c,r] of positions){
+      const key=`${c}:${r}`; if(routed.has(key))continue; routed.add(key);
+      const cell=this.cells[c]?.[r];
+      if(!cell){missing++;events.push(`R${c+1}/row${r+1}: NO SPINE CELL`);continue}
+      try{
+        // Explicitly restart the pose/track so WIN is visible even if LAND/IDLE was queued.
+        cell.mesh.visible=true;
+        // Spine 4.3 SkeletonMesh does not expose skeleton.setToSetupPose().
+        // Track reset is sufficient here; presentation must never fail on a cosmetic pose reset.
+        cell.mesh.state.clearTracks();
+        const entry=cell.mesh.state.setAnimation(0,'win',false);
+        cell.mesh.state.addAnimation(0,'idle',true,0);
+        cell.mesh.update(0); // apply the newly selected animation immediately this render frame
+        played++;events.push(`R${c+1}/row${r+1} ${cell.sym}: WIN`);
+      }catch(err){
+        missing++;events.push(`R${c+1}/row${r+1} ${cell.sym}: ERROR`);
+        console.error(`Spine WIN failed at ${key}`,err);
+      }
+    }
+    this.eventLog=[`${source}: requested ${seen.size}, played ${played}, missing ${missing}`,`WIN FOCUS: winners 100% · others 60%`,...events].slice(0,20);
+    return {requested:seen.size,played,missing};
+  }
+  forceWinAll(matrix){
+    // Always request the mathematical 4x4, not merely whatever happened to register.
+    const ensure=this.ensureMatrix(matrix,'idle');
+    const positions=[];for(let c=0;c<4;c++)for(let r=0;r<4;r++)positions.push([c,r]);
+    const result=this.playWin(positions,'FORCE SPINE WIN'); result.ensure=ensure; return result;
+  }
+  diagnostic(){return this.eventLog.length?this.eventLog.join('\n'):'No Spine win event yet';}
+  update(dt){
+    if(!this.ready)return;
+    // One bad cell must not tear down all 16 or falsify runtime readiness.
+    for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r];if(!cell?.mesh?.visible)continue;try{
+      const target=cell.targetBrightness??1,current=cell.brightness??1;
+      const speed=target<current?18:13; cell.brightness=current+(target-current)*(1-Math.exp(-speed*dt));
+      if(Math.abs(cell.brightness-target)<.005)cell.brightness=target;
+      this.setCellBrightness(cell,cell.brightness);
+      cell.mesh.update(dt)
+    }catch(err){
+      console.error(`Spine runtime update failed at ${c}:${r}; reverting that cell to PNG.`,err);
+      this.lastError=`UPDATE R${c+1}/row${r+1} ${cell.sym}: ${err?.message||err}`; this.cellErrors.push(this.lastError);this.cellErrors=this.cellErrors.slice(-8);
+      this.removeCell(c,r);const img=slots[c]?.[r+1];if(img)img.style.opacity='1';
+    }}
+  }
+}
+const spineSymbols=new SpineSymbolManager();
+const spineReady=await spineSymbols.init();
 
 const reels=await fetch('reels.json').then(r=>r.json());
 const BLUR_SYMBOLS=new Set(['A','C','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z']);
@@ -95,8 +259,9 @@ function evaluateFeatureSpin(mode,m){
 let lastDebugCore='Press anywhere to start.';
 let autoplayActive=false;
 function diagnosticStats(){
+  const spineState=spineSymbols.ready?`READY · 19 symbols · land / idle / win · cells ${spineSymbols.cellCount()}/16`:`FALLBACK TO PNG${spineSymbols.lastError?' · '+spineSymbols.lastError:''}`;
   const sessionRtp=totalStaked>0?(totalReturned/totalStaked*100):0;
-  return `\n\nACCOUNTANCY / RTP\nTheoretical RTP: ${THEORETICAL_RTP.toFixed(3)}%\nSession RTP: ${sessionRtp.toFixed(3)}%\nPaid spins: ${paidSpins}\nTotal staked: ${money(totalStaked)}\nTotal returned: ${money(totalReturned)}\nCredit: ${money(credit)}`;
+  return `\n\nSPINE 4.3\n${spineState}\n\nACCOUNTANCY / RTP\nTheoretical RTP: ${THEORETICAL_RTP.toFixed(3)}%\nSession RTP: ${sessionRtp.toFixed(3)}%\nPaid spins: ${paidSpins}\nTotal staked: ${money(totalStaked)}\nTotal returned: ${money(totalReturned)}\nCredit: ${money(credit)}`;
 }
 function refreshDebug(){debugEl.textContent=lastDebugCore+diagnosticStats()}
 function renderDebug(result,stops,m){
@@ -108,6 +273,7 @@ function renderDebug(result,stops,m){
   refreshDebug();
 }
 async function animateSpin(mode,targetStops){
+  spineSymbols.resetToPng();
   const baseDurations=[1080,1270,1460,1650];
   const targetMatrix=matrixFromStops(mode,targetStops);
   const totalSteps=[22,26,30,34];
@@ -119,6 +285,8 @@ async function animateSpin(mode,targetStops){
   const lastWhole=[-1,-1,-1,-1],lastBlur=[null,null,null,null],done=[false,false,false,false],start=performance.now();
   const landedScatters=[0,0,0,0];
   const special=[null,null,null,null];
+  const presentationStrips=[null,null,null,null];
+  const anticipationTiming=[];
   let sequenceActive=false;
   const progress=t=>{
     if(t<.16){const q=t/.16;return .15*q*q*(3-2*q)}
@@ -134,24 +302,21 @@ async function animateSpin(mode,targetStops){
     const elapsed=now-start,t=Math.min(1,elapsed/baseDurations[c]);
     return {distance:totalSteps[c]*progress(t),velocity:totalSteps[c]*progressDerivative(t)/baseDurations[c]};
   }
-  function nextForwardLanding(c,currentDistance,requiredTravel=0){
-    // A reel may ONLY land on an equivalent copy of its predetermined stop
-    // that lies ahead of its current absolute travel coordinate. Because the
-    // strip wraps, valid landing coordinates are totalSteps + N*stripLength.
-    // Never choose a shorter/backwards path.
-    const strip=reels[`reel${mode}${c+1}`];
-    const minimum=currentDistance+Math.max(0,requiredTravel);
-    let target=totalSteps[c];
-    if(target<=minimum){
-      const cycles=Math.floor((minimum-target)/strip.length)+1;
-      target+=cycles*strip.length;
-    }
-    return target;
+  function makePresentationStrip(c,targetDistance){
+    // Anticipation presentation is time-bounded. We keep following the real strip
+    // until the final approach, then seed the predetermined four-symbol window
+    // into a temporary presentation copy AHEAD of the current reel. Maths/result
+    // data never changes; this only decouples visual travel distance from an
+    // arbitrary 80-stop absolute coordinate.
+    const real=reels[`reel${mode}${c+1}`];
+    const strip=real.slice();
+    const landingCenter=((starts[c]-targetDistance)%strip.length+strip.length)%strip.length;
+    for(let r=0;r<4;r++) strip[(landingCenter-1+r+strip.length)%strip.length]=targetMatrix[c][r];
+    return strip;
   }
   function startHold(c,now){
     if(done[c]||special[c])return;
     const m=normalMotion(c,now);
-    // Hold never accelerates: it preserves the speed the reel had at interception.
     special[c]={phase:'hold',startTime:now,startDistance:m.distance,startVelocity:Math.max(m.velocity,0.0018),distance:m.distance,velocity:Math.max(m.velocity,0.0018)};
     columns[c].classList.add('anticipating');
   }
@@ -164,37 +329,35 @@ async function animateSpin(mode,targetStops){
     }else{
       const m=normalMotion(c,now); d=m.distance; v=m.velocity;
     }
-    // Never speed the reel back up. The cruise begins at exactly its current velocity.
+    // Hard rule: never reverse and never accelerate when anticipation starts.
     v=Math.max(v,0.0018);
-    const decelMs=360, cruiseMs=Math.max(500,duration-decelMs);
+    const decelMs=500;
+    const cruiseMs=Math.max(0,duration);
+    // Choose a nearby FORWARD presentation landing. It does not need to be an
+    // 80-stop-equivalent absolute coordinate because the temporary strip below
+    // carries the already-determined final symbols into that landing window.
     const cruiseTravel=v*cruiseMs;
-    // Choose the NEXT equivalent copy of the predetermined stop that is still
-    // ahead after the cruise. This makes reverse travel mathematically impossible.
-    const target=nextForwardLanding(c,d,cruiseTravel+0.001);
-    // Cruise until there is a sensible forward-only braking distance left.
-    // This can lengthen the tease slightly, but it can never reverse or accelerate
-    // merely to recover an already-passed target.
-    const brakingDistance=Math.max(3.0,v*decelMs*0.55);
-    const available=Math.max(0,target-d-brakingDistance);
-    const actualCruiseMs=Math.max(0,available/v);
-    special[c]={phase:'anticipate',startTime:now,startDistance:d,startVelocity:v,cruiseMs:actualCruiseMs,decelMs,targetDistance:target,distance:d,velocity:v};
+    const minimumTravel=Math.max(7,cruiseTravel+4);
+    const target=Math.ceil(d+minimumTravel);
+    presentationStrips[c]=makePresentationStrip(c,target);
+    special[c]={phase:'anticipate',startTime:now,startDistance:d,startVelocity:v,cruiseMs,decelMs,targetDistance:target,distance:d,velocity:v,wallStart:now};
     lastWhole[c]=-1;
     columns[c].classList.add('anticipating');
-    lastDebugCore=`REEL ${c+1}: ANTICIPATING\n`+lastDebugCore;refreshDebug();
+    lastDebugCore=`REEL ${c+1}: ANTICIPATING (target ${(duration/1000).toFixed(2)}s + 0.50s decel)\n`+lastDebugCore;refreshDebug();
   }
   function beginSequence(now){
     if(sequenceActive||landedScatters.reduce((a,b)=>a+b,0)<2)return;
     sequenceActive=true;
     // Stage 1: reel 3 teases. Reel 4 is intercepted and kept genuinely moving,
     // so it cannot quietly land while reel 3 is doing its tease.
-    if(!done[2])startAnticipation(2,now,1200);
+    if(!done[2])startAnticipation(2,now,1000);
     if(!done[3])startHold(3,now);
   }
   function advanceSequence(c,now){
     // Reel 4 gets its OWN tease only after reel 3 has physically landed.
     // This is true whether reel 3 hit the third scatter or missed it: reel 4 may
     // be teasing the feature itself, or the 10->15 spin upgrade.
-    if(sequenceActive&&c===2&&!done[3])startAnticipation(3,now,1500);
+    if(sequenceActive&&c===2&&!done[3])startAnticipation(3,now,1300);
   }
   function specialMotion(c,now){
     const a=special[c];
@@ -208,7 +371,7 @@ async function animateSpin(mode,targetStops){
     }
     const u=Math.min(1,(dt-a.cruiseMs)/a.decelMs);
     const cruiseEnd=a.startDistance+a.startVelocity*a.cruiseMs;
-    // Smooth monotonic deceleration into the exact rebased target. No speed-up phase.
+    // Fixed-time monotonic final approach. targetDistance is always ahead.
     const ease=1-Math.pow(1-u,3);
     return {distance:cruiseEnd+(a.targetDistance-cruiseEnd)*ease,finished:u>=1};
   }
@@ -226,31 +389,50 @@ async function animateSpin(mode,targetStops){
           exactDistance=totalSteps[c]*progress(t);useBlur=t<.52;finished=elapsed>=baseDurations[c];
         }
         const whole=Math.floor(exactDistance),frac=exactDistance-whole;
-        const strip=reels[`reel${mode}${c+1}`],center=(starts[c]-whole+strip.length*10)%strip.length;
+        const realStrip=reels[`reel${mode}${c+1}`],strip=(a&&presentationStrips[c])?presentationStrips[c]:realStrip,center=(starts[c]-whole+strip.length*10)%strip.length;
         if(whole!==lastWhole[c]||useBlur!==lastBlur[c]){lastWhole[c]=whole;lastBlur[c]=useBlur;fillTrack(c,strip,center,useBlur)}
         tracks[c].style.transform=`translate3d(0,${(-16.6666667 + frac*16.6666667).toFixed(5)}%,0)`;
         const normalT=Math.min(1,elapsed/baseDurations[c]);
         columns[c].classList.toggle('running',!a&&normalT<.52);columns[c].classList.toggle('slow',!!a||normalT>=.52);
         if(finished){
           fillTrack(c,strip,targetStops[c],false);tracks[c].style.transform='translateY(-16.6666667%)';
+          // Presentation is deliberately non-blocking: mark gameplay landing first, then notify Spine safely.
           columns[c].classList.remove('running','slow','anticipating');columns[c].classList.add('settle');
-          if(a){lastDebugCore=`REEL ${c+1}: LANDED\n`+lastDebugCore;refreshDebug();}
+          if(a){const actual=(now-a.wallStart)/1000;anticipationTiming.push(`R${c+1} total anticipation-to-land: ${actual.toFixed(2)}s`);lastDebugCore=`REEL ${c+1}: LANDED · ${actual.toFixed(2)}s\n`+lastDebugCore;refreshDebug();}
           setTimeout(()=>columns[c].classList.remove('settle'),75);done[c]=true;
+          // Spine cannot delay or abort reel completion.
+          try{spineSymbols.landColumn(c,targetMatrix[c])}catch(err){console.error('Non-fatal Spine landing error',err)}
           landedScatters[c]=targetMatrix[c].filter(sym=>sym==='F').length;
           // Only a physically landed second scatter can start the sequence.
           beginSequence(now);
           advanceSequence(c,now);
         }
       }
-      if(done.every(Boolean))resolve();else requestAnimationFrame(frame)
+      if(done.every(Boolean)){if(anticipationTiming.length){lastDebugCore=`ANTICIPATION TIMING\n${anticipationTiming.join('\n')}\n\n`+lastDebugCore;refreshDebug();}resolve()}else requestAnimationFrame(frame)
     }requestAnimationFrame(frame)
   })
 }
 async function spinOnce(mode,isFeature=false,forcedStops=null){
   const stops=forcedStops?forcedStops.slice():chooseStops(mode);
   await animateSpin(mode,stops);draw(mode,stops);
+  // v0.19.3: authoritative post-land registration pass. The final 4x4 must own 16 live Spine cells.
+  const spineEnsure=spineSymbols.ensureMatrix(currentMatrix,'idle');
   const result=isFeature?evaluateFeatureSpin(mode,currentMatrix):evaluateSpin(mode,currentMatrix);
+  // v0.19.5 — genuine result -> Spine choreography. Keep each source explicit so diagnostics
+  // prove whether a line win, collector win, or scatter trigger actually drove animation.
+  const lineWinPositions=[];
+  for(const w of result.lineWins)lineWinPositions.push(...w.positions);
+  const collectorPositions=[];
+  if(result.collectorActive){collectorPositions.push(...result.wPositions);for(const g of result.gems)collectorPositions.push(g.position)}
+  const scatterPositions=[];
+  if(result.scatterCount>=3){for(let c=0;c<4;c++)for(let r=0;r<4;r++)if(currentMatrix[c][r]==='F')scatterPositions.push([c,r])}
+  const winPositions=[...lineWinPositions,...collectorPositions,...scatterPositions];
+  let spineWinReport={requested:0,played:0,missing:0};
+  try{spineWinReport=spineSymbols.playWin(winPositions,'GAME RESULT')}catch(err){console.error('Non-fatal Spine win presentation error',err)}
+  const uniqueCount=(positions)=>new Set(positions.map(([c,r])=>`${c}:${r}`)).size;
+  const spineRouteSummary=`LINE WIN CELLS: ${uniqueCount(lineWinPositions)}\nCOLLECT CELLS: ${uniqueCount(collectorPositions)}\nSCATTER CELLS: ${uniqueCount(scatterPositions)}\nTOTAL UNIQUE WIN CELLS: ${uniqueCount(winPositions)}`;
   renderDebug(result,stops,currentMatrix);
+  lastDebugCore += `\n\nSPINE CELL REGISTRATION\nrequested ${spineEnsure.requested} · created ${spineEnsure.created} · existing ${spineEnsure.existing} · failed ${spineEnsure.failed}\n${spineSymbols.cellDiagnostic(currentMatrix)}\n\nSPINE RESULT ROUTING\n${spineRouteSummary}\n${spineSymbols.diagnostic()}`;refreshDebug();
   if(isFeature){lastDebugCore=`FEATURE SPIN · ${mode}\n`+lastDebugCore+`\n\nFEATURE TOTAL: ${featureTotal.toFixed(2)}`;refreshDebug()}
   return result;
 }
@@ -329,5 +511,16 @@ addEventListener('keydown',e=>{
   if(e.code!=='Space'||e.repeat)return;const tag=(e.target?.tagName||'').toLowerCase();if(['input','textarea','select'].includes(tag)||e.target?.isContentEditable)return;e.preventDefault();
   if(['START','FEATURE_ENTRY','FEATURE_COMPLETE'].includes(gameState))continueAction();else doSpin();
 });
+// Temporary v0.19.2 Spine diagnostic: direct animation test, independent of paylines/maths.
+const forceSpineWin=document.createElement('button');
+forceSpineWin.id='force-spine-win';forceSpineWin.textContent='FORCE SPINE WIN';
+Object.assign(forceSpineWin.style,{position:'absolute',right:'8px',top:'28px',zIndex:'40',fontSize:'10px',padding:'5px 7px',opacity:'.82'});
+game.appendChild(forceSpineWin);
+forceSpineWin.addEventListener('click',()=>{
+  const report=spineSymbols.forceWinAll(currentMatrix);
+  lastDebugCore=`DEBUG: FORCE SPINE WIN\nrequested ${report.requested} · played ${report.played} · missing ${report.missing}\nregistration: created ${report.ensure?.created??0} · existing ${report.ensure?.existing??0} · failed ${report.ensure?.failed??0}\n\n${spineSymbols.cellDiagnostic(currentMatrix)}\n\n${spineSymbols.diagnostic()}\n\n`+lastDebugCore;
+  refreshDebug();
+});
 updateAccount();refreshDebug();
-const initialMode='A',initialStops=chooseStops(initialMode);draw(initialMode,initialStops);renderer.setAnimationLoop(()=>renderer.render(scene,camera));
+const initialMode='A',initialStops=chooseStops(initialMode);draw(initialMode,initialStops);let spineFrame=performance.now();
+renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min(.05,(now-spineFrame)/1000);spineFrame=now;spineSymbols.update(dt);renderer.render(scene,camera)});

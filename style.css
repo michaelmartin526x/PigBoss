@@ -48,3 +48,5 @@
 #version{top:.45%;bottom:auto;right:.8%;width:auto;text-align:right;font-size:7px;opacity:.28;z-index:9}
 #game.feature-mode #status{top:75.2%}
 #autoplay.active{filter:brightness(1.18);transform:scale(.97)}
+/* v0.19 Spine presentation: PNGs remain the reel renderer; landed cells hand off to the Three.js Spine layer. */
+.reel-track img{transition:opacity .035s linear}

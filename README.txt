@@ -37,3 +37,12 @@ v0.17 anticipation choreography:
 - No anticipation speed-up: intercepted reels preserve current speed.
 - Reel 4 is held in continuous motion while reel 3 teases.
 - Reel 4 receives its own longer tease after reel 3 lands.
+
+
+v0.19.1 hotfix: Spine presentation is fire-and-forget. Reel/gameplay completion is committed before Spine notification. Per-cell and runtime failures restore PNG fallback and cannot block the game loop.
+
+
+v0.19.5 Spine hotfix: removed incompatible skeleton.setToSetupPose() calls from Spine 4.3 cell creation and win playback. No reel/math/anticipation/accountancy changes.
+
+
+v0.19.5: Genuine line-win, collector, and scatter result cells are explicitly routed to Spine WIN. Added per-source routing diagnostics. Reel engine/maths unchanged.
