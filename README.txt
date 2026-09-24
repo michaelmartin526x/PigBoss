@@ -32,7 +32,7 @@ v0.12 — UI Cleanup / Diagnostic RTP / Anticipation Tell Fix
 - Scatter anticipation now activates only after two scatters have physically landed; all reels begin with identical normal timing.
 
 
-v0.16 anticipation choreography:
+v0.17 anticipation choreography:
 - Sequential reel 3 then reel 4 anticipation.
 - No anticipation speed-up: intercepted reels preserve current speed.
 - Reel 4 is held in continuous motion while reel 3 teases.

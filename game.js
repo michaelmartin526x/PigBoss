@@ -134,12 +134,19 @@ async function animateSpin(mode,targetStops){
     const elapsed=now-start,t=Math.min(1,elapsed/baseDurations[c]);
     return {distance:totalSteps[c]*progress(t),velocity:totalSteps[c]*progressDerivative(t)/baseDurations[c]};
   }
-  function rebaseForTravel(c,distance,travel){
-    // Pick only the whole-symbol headroom actually required for this tease.
-    const K=Math.max(2,Math.ceil(distance+travel-totalSteps[c]+1));
+  function nextForwardLanding(c,currentDistance,requiredTravel=0){
+    // A reel may ONLY land on an equivalent copy of its predetermined stop
+    // that lies ahead of its current absolute travel coordinate. Because the
+    // strip wraps, valid landing coordinates are totalSteps + N*stripLength.
+    // Never choose a shorter/backwards path.
     const strip=reels[`reel${mode}${c+1}`];
-    starts[c]=(starts[c]+K)%strip.length;
-    return {distance:distance+K,target:totalSteps[c]+K};
+    const minimum=currentDistance+Math.max(0,requiredTravel);
+    let target=totalSteps[c];
+    if(target<=minimum){
+      const cycles=Math.floor((minimum-target)/strip.length)+1;
+      target+=cycles*strip.length;
+    }
+    return target;
   }
   function startHold(c,now){
     if(done[c]||special[c])return;
@@ -161,12 +168,16 @@ async function animateSpin(mode,targetStops){
     v=Math.max(v,0.0018);
     const decelMs=360, cruiseMs=Math.max(500,duration-decelMs);
     const cruiseTravel=v*cruiseMs;
-    const decelTravel=v*decelMs*0.48;
-    const rb=rebaseForTravel(c,d,cruiseTravel+decelTravel);
-    d=rb.distance;
-    // Rebase hold's visible coordinate too: start and distance changed by the same integer.
-    const target=rb.target;
-    special[c]={phase:'anticipate',startTime:now,startDistance:d,startVelocity:v,cruiseMs,decelMs,targetDistance:target,distance:d,velocity:v};
+    // Choose the NEXT equivalent copy of the predetermined stop that is still
+    // ahead after the cruise. This makes reverse travel mathematically impossible.
+    const target=nextForwardLanding(c,d,cruiseTravel+0.001);
+    // Cruise until there is a sensible forward-only braking distance left.
+    // This can lengthen the tease slightly, but it can never reverse or accelerate
+    // merely to recover an already-passed target.
+    const brakingDistance=Math.max(3.0,v*decelMs*0.55);
+    const available=Math.max(0,target-d-brakingDistance);
+    const actualCruiseMs=Math.max(0,available/v);
+    special[c]={phase:'anticipate',startTime:now,startDistance:d,startVelocity:v,cruiseMs:actualCruiseMs,decelMs,targetDistance:target,distance:d,velocity:v};
     lastWhole[c]=-1;
     columns[c].classList.add('anticipating');
     lastDebugCore=`REEL ${c+1}: ANTICIPATING\n`+lastDebugCore;refreshDebug();
