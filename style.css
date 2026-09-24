@@ -1,0 +1,50 @@
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#061b27;font-family:Arial,sans-serif}body{display:grid;place-items:center}#game{position:relative;width:min(100vw,56.25vh);aspect-ratio:720/1280;overflow:hidden;background:#075f7e;box-shadow:0 0 60px #0008}#bg{position:absolute;width:100%;height:100%;object-fit:cover}#logo{position:absolute;left:4%;top:2.5%;width:92%;height:auto}#reel-shell{position:absolute;left:1.4%;top:26%;width:97.2%;aspect-ratio:700/620}#reel-bg,#reel-frame{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#reel-bg{z-index:0}#three{position:absolute;z-index:1;left:2.85%;top:3.2%;width:94.3%;height:93.55%;overflow:hidden}#reel-window{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:1;overflow:hidden}
+.reel-column{position:relative;overflow:hidden;height:100%}
+.reel-track{position:absolute;left:0;top:0;width:100%;height:150%;will-change:transform;transform:translateY(-16.6666667%)}
+.reel-track img{display:block;width:100%;height:16.6666667%;object-fit:contain;will-change:transform,opacity;backface-visibility:hidden}
+/* v0.6: blur is artwork-driven. No CSS blur/filter is applied. */
+.reel-column.running .reel-track img{transform:scaleY(1.025);opacity:.98}
+.reel-column.slow .reel-track img{transform:scaleY(1.006);opacity:1}
+.reel-column.settle{animation:reelColumnSettle .115s ease-out}
+/* Start at exactly zero so landing can never snap upward. Impact moves DOWN first, then a tiny rebound. */
+@keyframes reelColumnSettle{0%{transform:translateY(0)}34%{transform:translateY(.48%)}68%{transform:translateY(-.12%)}100%{transform:translateY(0)}}#fx-layer{position:absolute;inset:0;z-index:2;pointer-events:none}#fx-layer canvas{display:block;width:100%!important;height:100%!important}#reel-frame{z-index:2}#status{position:absolute;top:76.5%;left:50%;transform:translateX(-50%);font-weight:900;font-size:clamp(10px,2.2vw,20px);color:white;text-shadow:0 2px 4px #000;letter-spacing:.12em}#spin{position:absolute;top:78%;left:50%;transform:translateX(-50%);width:22%;aspect-ratio:1;border:0;background:transparent;padding:0;cursor:pointer;transition:.12s}#spin:hover{transform:translateX(-50%) scale(1.05)}#spin:active{transform:translateX(-50%) scale(.96)}#spin:disabled{filter:grayscale(.8);opacity:.65;cursor:default}#spin img{width:100%;height:100%;object-fit:contain}.spinning #spin img{animation:rot .65s linear infinite}@keyframes rot{to{transform:rotate(360deg)}}#hud{position:absolute;left:14%;right:14%;bottom:4.4%;display:flex;justify-content:space-between;gap:5%}#hud>div{width:48%;height:58px;background:#050505;border-radius:16px;color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:inset 0 0 0 2px #ffffff16}small{font-size:10px;color:#aaa}b{font-size:18px}#version{position:absolute;bottom:1%;width:100%;text-align:center;color:#ffffff80;font-size:9px;letter-spacing:.15em}
+
+
+#debug{position:fixed;right:12px;top:12px;width:min(360px,38vw);max-height:calc(100vh - 24px);overflow:auto;background:#061018ee;color:#d8f4ff;border:1px solid #4ac4ff55;border-radius:10px;padding:10px;z-index:50;box-shadow:0 8px 30px #0008}#debug-title{font-size:11px;font-weight:900;letter-spacing:.12em;color:#7dd9ff;margin-bottom:8px}#debug pre{margin:0;white-space:pre-wrap;font:11px/1.42 Consolas,monospace}@media(max-width:900px){#debug{display:none}}
+/* v0.10 complete game loop */
+#free-bg{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;pointer-events:none;transition:opacity .35s ease;z-index:0}
+#game.feature-mode #bg{opacity:0}#game.feature-mode #free-bg{opacity:1}#game.feature-mode #logo{filter:drop-shadow(0 4px 8px #0008)}
+.screen{position:absolute;inset:0;z-index:30;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#066783;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .28s ease,visibility .28s}
+.screen.active{opacity:1;visibility:visible;pointer-events:auto}.screen#feature-entry,.screen#feature-complete{background:#002d49d9;backdrop-filter:blur(2px)}
+.splash-character{position:absolute;width:94%;left:3%;top:14%;height:auto;animation:splashIn .65s cubic-bezier(.2,.85,.25,1.08)}
+.press-anywhere{position:absolute;width:76%;left:12%;bottom:8%;height:auto;animation:pulse 1.25s ease-in-out infinite}
+.feature-panel{width:92%;height:auto;filter:drop-shadow(0 12px 16px #0008);animation:panelIn .42s cubic-bezier(.2,.85,.25,1.08)}
+.feature-press{position:absolute;width:67%;left:16.5%;bottom:8%;height:auto;animation:pulse 1.25s ease-in-out infinite}
+.complete-wrap{position:relative;width:92%}.complete-wrap .feature-panel{width:100%}#feature-total{position:absolute;left:8%;right:8%;top:45%;text-align:center;color:#fff;font-weight:1000;font-size:clamp(42px,10vw,84px);text-shadow:0 6px 0 #000,0 9px 18px #0009;letter-spacing:.02em}
+#feature-hud{display:none;position:absolute;z-index:8;left:7%;right:7%;top:72.5%;justify-content:space-between;gap:4%;color:white;font-weight:900;text-shadow:0 2px 4px #000;font-size:clamp(10px,2vw,18px)}#game.feature-mode #feature-hud{display:flex}#game.feature-mode #status{top:75.2%}
+@keyframes pulse{50%{transform:scale(1.035);opacity:.78}}@keyframes panelIn{from{transform:scale(.72);opacity:0}to{transform:scale(1);opacity:1}}@keyframes splashIn{from{transform:translateY(-3%) scale(.92);opacity:0}to{transform:none;opacity:1}}
+/* v0.11: calm landing, accountancy bar, splash logo and genuine scatter anticipation */
+.reel-column.settle{animation:reelColumnSettleV11 .075s ease-out}
+@keyframes reelColumnSettleV11{0%{transform:translateY(0)}55%{transform:translateY(.16%)}100%{transform:translateY(0)}}
+.reel-column.anticipating{filter:drop-shadow(0 0 5px rgba(255,255,255,.22))}
+#account-bar{position:absolute;left:0;right:0;bottom:0;height:9.375%;z-index:6;color:#fff}
+#account-bar>img{position:absolute;inset:0;width:100%;height:100%;object-fit:fill}
+.account{position:absolute;top:0;bottom:0;display:flex;align-items:center;gap:8px;z-index:1;white-space:nowrap}
+.account small{font-weight:800;font-size:clamp(9px,1.65vw,16px);color:#969696;letter-spacing:.02em}.account b{font-size:clamp(16px,3.2vw,30px);font-weight:900;color:#fff}
+.account.stake{left:2.2%;width:30%;justify-content:flex-start}.account.win{left:34%;width:32%;justify-content:center}.account.credit{right:2.2%;width:31%;justify-content:flex-end}
+#version{bottom:9.7%;opacity:.5}#hud{display:none}
+.splash-logo{position:absolute;width:82%;left:9%;top:2.5%;height:auto;z-index:2;filter:drop-shadow(0 8px 8px #0007);animation:logoIn .58s cubic-bezier(.2,.85,.25,1.08)}
+.splash-character{top:18%}.press-anywhere{bottom:10.5%}
+@keyframes logoIn{from{transform:translateY(-8%) scale(.88);opacity:0}to{transform:none;opacity:1}}
+
+/* v0.12: cleaner control layout */
+#status{top:75.9%;z-index:7;white-space:nowrap}
+#spin{top:79.2%;width:21%;z-index:7}
+.side-button{position:absolute;top:81.2%;width:13.5%;aspect-ratio:1;border:0;background:transparent;padding:0;cursor:pointer;z-index:7;transition:.12s}
+.side-button>img:first-child{width:100%;height:100%;object-fit:contain}
+#settings{left:20%}#autoplay{right:20%}
+.side-button:hover{transform:scale(1.05)}.side-button:active{transform:scale(.96)}
+#autoplay .autoplay-label{position:absolute;left:50%;top:88%;width:118%;height:auto;transform:translateX(-50%);pointer-events:none}
+#version{top:.45%;bottom:auto;right:.8%;width:auto;text-align:right;font-size:7px;opacity:.28;z-index:9}
+#game.feature-mode #status{top:75.2%}
+#autoplay.active{filter:brightness(1.18);transform:scale(.97)}
