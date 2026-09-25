@@ -46,3 +46,10 @@ v0.19.5 Spine hotfix: removed incompatible skeleton.setToSetupPose() calls from 
 
 
 v0.19.5: Genuine line-win, collector, and scatter result cells are explicitly routed to Spine WIN. Added per-source routing diagnostics. Reel engine/maths unchanged.
+
+v0.19.8
+- Built from the preferred v0.19.6 baseline.
+- Replaced game Background.png with the new supplied background.
+- Replaced Spine symbol package with Symbols(4).zip.
+- Added fx_anticipation as a presentation-only reel overlay tied to ANTICIPATING state.
+- Preserved v0.19.6 win layering and 60% non-winner dimming; v0.19.7 foreground-win layering was NOT carried forward.

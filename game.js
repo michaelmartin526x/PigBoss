@@ -39,13 +39,14 @@ function resize(){renderer.setSize(Math.max(1,host.clientWidth),Math.max(1,host.
 // The 660x580 Three.js view is exactly 4 x (165x145), matching the authored Spine symbols.
 const SPINE_SYMBOLS=['A','C','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z'];
 class SpineSymbolManager{
-  constructor(){this.ready=false;this.data=new Map();this.cells=Array.from({length:4},()=>Array(4).fill(null));this.assetManager=null;this.last=performance.now();this.eventLog=[];this.lastError='';this.cellErrors=[];this.focusTimer=null;}
+  constructor(){this.ready=false;this.data=new Map();this.cells=Array.from({length:4},()=>Array(4).fill(null));this.assetManager=null;this.last=performance.now();this.eventLog=[];this.lastError='';this.cellErrors=[];this.focusTimer=null;this.fxData=null;this.anticipationFx=null;this.anticipationReel=-1;}
   async init(){
     try{
       this.assetManager=new spine.AssetManager('assets/spine/');
       await Promise.all([
         this.assetManager.loadTextureAtlasAsync('Symbols.atlas'),
-        ...SPINE_SYMBOLS.map(sym=>this.assetManager.loadJsonAsync(`${sym}.json`))
+        ...SPINE_SYMBOLS.map(sym=>this.assetManager.loadJsonAsync(`${sym}.json`)),
+        this.assetManager.loadJsonAsync('fx_anticipation.json')
       ]);
       const atlas=this.assetManager.require('Symbols.atlas');
       const loader=new spine.AtlasAttachmentLoader(atlas);
@@ -53,6 +54,7 @@ class SpineSymbolManager{
         const parser=new spine.SkeletonJson(loader); parser.scale=1;
         this.data.set(sym,parser.readSkeletonData(this.assetManager.require(`${sym}.json`)));
       }
+      { const parser=new spine.SkeletonJson(loader); parser.scale=1; this.fxData=parser.readSkeletonData(this.assetManager.require('fx_anticipation.json')); }
       this.ready=true;
       return true;
     }catch(err){
@@ -81,6 +83,7 @@ class SpineSymbolManager{
     scene.remove(old.mesh); if(typeof old.mesh.dispose==='function')old.mesh.dispose(); this.cells[c][r]=null;
   }
   resetToPng(){
+    this.stopAnticipationFx();
     for(let c=0;c<4;c++)for(let r=0;r<4;r++){
       this.removeCell(c,r); const img=slots[c]?.[r+1]; if(img)img.style.opacity='1';
     }
@@ -128,6 +131,25 @@ class SpineSymbolManager{
     if(!this.ready)return;
     try{for(let r=0;r<4;r++)this.showCell(c,r,symbols[r],'land')}
     catch(err){console.error(`Spine column ${c} presentation failed. Gameplay continues.`,err)}
+  }
+  startAnticipationFx(c){
+    if(!this.ready||!this.fxData)return;
+    try{
+      this.stopAnticipationFx();
+      let mesh;
+      try{mesh=new spine.SkeletonMesh({skeletonData:this.fxData,twoColorTint:false,materialFactory:(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true;return new THREE.MeshBasicMaterial(parameters)}})}
+      catch(_){mesh=new spine.SkeletonMesh(this.fxData,(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true})}
+      // Authored FX is ~205x600 and intentionally overlaps the reel edges vertically.
+      mesh.position.set(-VIEW_W/2+82.5+c*165,0,0); mesh.renderOrder=60; mesh.zOffset=.002; mesh.visible=true;
+      mesh.state.clearTracks(); mesh.state.setAnimation(0,'loop',true); mesh.update(0); scene.add(mesh);
+      this.anticipationFx=mesh; this.anticipationReel=c;
+    }catch(err){console.error('Non-fatal anticipation Spine FX error',err);this.lastError=`ANTICIPATION FX R${c+1}: ${err?.message||err}`}
+  }
+  stopAnticipationFx(c=null){
+    if(!this.anticipationFx)return;
+    if(c!==null&&this.anticipationReel!==c)return;
+    try{scene.remove(this.anticipationFx);if(typeof this.anticipationFx.dispose==='function')this.anticipationFx.dispose()}catch(_){}
+    this.anticipationFx=null;this.anticipationReel=-1;
   }
   setCellBrightness(cell,value){
     if(!cell?.mesh?.skeleton?.color)return;
@@ -181,6 +203,7 @@ class SpineSymbolManager{
   diagnostic(){return this.eventLog.length?this.eventLog.join('\n'):'No Spine win event yet';}
   update(dt){
     if(!this.ready)return;
+    if(this.anticipationFx){try{this.anticipationFx.update(dt)}catch(err){console.error('Anticipation FX update failed',err);this.stopAnticipationFx()}}
     // One bad cell must not tear down all 16 or falsify runtime readiness.
     for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r];if(!cell?.mesh?.visible)continue;try{
       const target=cell.targetBrightness??1,current=cell.brightness??1;
@@ -343,6 +366,7 @@ async function animateSpin(mode,targetStops){
     special[c]={phase:'anticipate',startTime:now,startDistance:d,startVelocity:v,cruiseMs,decelMs,targetDistance:target,distance:d,velocity:v,wallStart:now};
     lastWhole[c]=-1;
     columns[c].classList.add('anticipating');
+    try{spineSymbols.startAnticipationFx(c)}catch(_){}
     lastDebugCore=`REEL ${c+1}: ANTICIPATING (target ${(duration/1000).toFixed(2)}s + 0.50s decel)\n`+lastDebugCore;refreshDebug();
   }
   function beginSequence(now){
@@ -398,6 +422,7 @@ async function animateSpin(mode,targetStops){
           fillTrack(c,strip,targetStops[c],false);tracks[c].style.transform='translateY(-16.6666667%)';
           // Presentation is deliberately non-blocking: mark gameplay landing first, then notify Spine safely.
           columns[c].classList.remove('running','slow','anticipating');columns[c].classList.add('settle');
+          try{spineSymbols.stopAnticipationFx(c)}catch(_){}
           if(a){const actual=(now-a.wallStart)/1000;anticipationTiming.push(`R${c+1} total anticipation-to-land: ${actual.toFixed(2)}s`);lastDebugCore=`REEL ${c+1}: LANDED · ${actual.toFixed(2)}s\n`+lastDebugCore;refreshDebug();}
           setTimeout(()=>columns[c].classList.remove('settle'),75);done[c]=true;
           // Spine cannot delay or abort reel completion.
