@@ -53,3 +53,6 @@ v0.19.8
 - Replaced Spine symbol package with Symbols(4).zip.
 - Added fx_anticipation as a presentation-only reel overlay tied to ANTICIPATING state.
 - Preserved v0.19.6 win layering and 60% non-winner dimming; v0.19.7 foreground-win layering was NOT carried forward.
+
+
+v0.20.0: Updated splash artwork/layout and Free Spins background from art update package. Gameplay/Spine/reel logic retained from v0.19.8.

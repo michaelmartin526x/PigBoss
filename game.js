@@ -10,6 +10,47 @@ const GEM_SYMBOLS=new Set(Object.keys(GEM_VALUES));
 const game=document.querySelector('#game'), spin=document.querySelector('#spin');
 const winEl=document.querySelector('#win'), creditEl=document.querySelector('#credit'), stakeEl=document.querySelector('#stake'), status=document.querySelector('#status'), debugEl=document.querySelector('#debug-content');
 const splash=document.querySelector('#splash'), featureEntry=document.querySelector('#feature-entry'), featureComplete=document.querySelector('#feature-complete');
+
+// v0.20.0 AudioManager — music is presentation-only and never blocks game logic.
+class PigBossAudioManager{
+  constructor(){
+    this.intro=new Audio('assets/audio/PigBoss_splashscreen_theme.mp3');
+    this.ambient=new Audio('assets/audio/PigBoss_splash_ambient_loop.mp3');
+    this.base=new Audio('assets/audio/PigBoss_basegame_loop.mp3');
+    this.intro.preload=this.ambient.preload=this.base.preload='auto';
+    this.intro.loop=false; this.ambient.loop=true; this.base.loop=true;
+    this.musicVolume=.58; this.ambientVolume=.28; this.fadeToken=0;
+    this.intro.volume=this.musicVolume; this.ambient.volume=this.ambientVolume; this.base.volume=0;
+    this.introStarted=false; this.autoplayBlocked=false;
+    this.intro.addEventListener('ended',()=>{if(gameState==='START')this.playAmbient();});
+  }
+  async trySplashIntro(){
+    if(this.introStarted)return true;
+    try{this.intro.currentTime=0;await this.intro.play();this.introStarted=true;this.autoplayBlocked=false;return true}
+    catch(e){this.autoplayBlocked=true;return false}
+  }
+  async unlockSplashIntro(){return this.trySplashIntro()}
+  fade(audio,to,duration=650,pauseAtEnd=false){
+    const token=++this.fadeToken,start=audio.volume,t0=performance.now();
+    const tick=(now)=>{if(token!==this.fadeToken)return;const t=Math.min(1,(now-t0)/duration);audio.volume=start+(to-start)*t;if(t<1)requestAnimationFrame(tick);else if(pauseAtEnd&&to===0){audio.pause();audio.currentTime=0}};
+    requestAnimationFrame(tick);
+  }
+  async playAmbient(){
+    if(gameState!=='START')return;
+    try{this.ambient.volume=0;this.ambient.currentTime=0;await this.ambient.play();this.fade(this.ambient,this.ambientVolume,900)}catch(e){}
+  }
+  async enterBase(){
+    // Fade whichever splash source is active; start the base loop underneath it.
+    if(!this.intro.paused)this.fade(this.intro,0,700,true);
+    if(!this.ambient.paused)this.fade(this.ambient,0,700,true);
+    try{this.base.volume=0;if(this.base.paused)await this.base.play();this.fade(this.base,this.musicVolume,850)}catch(e){}
+  }
+}
+const audioManager=new PigBossAudioManager();
+// Browsers may permit autoplay (e.g. after prior site interaction). If not, the first
+// Press Anywhere starts the one-shot intro; a second press may skip into the game.
+setTimeout(()=>audioManager.trySplashIntro(),80);
+
 const featureEntryPanel=document.querySelector('#feature-entry-panel'), featureTotalEl=document.querySelector('#feature-total');
 const freeLeftEl=document.querySelector('#free-left'), featureWinEl=document.querySelector('#feature-win');
 let gameState='START',pendingFreeSpins=0,freeSpinsLeft=0,featureTotal=0;
@@ -464,7 +505,7 @@ async function spinOnce(mode,isFeature=false,forcedStops=null){
 function money(v){return Number(v).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function updateAccount(){creditEl.textContent=money(credit);stakeEl.textContent=money(stake);winEl.textContent=money(lastWin)}
 function setScreen(el,on){el.classList.toggle('active',on)}
-function enterBase(){gameState='BASE_GAME';game.classList.remove('feature-mode');setScreen(splash,false);setScreen(featureEntry,false);setScreen(featureComplete,false);spin.disabled=false;status.textContent='GOOD LUCK!';refreshDebug()}
+function enterBase(){audioManager.enterBase();gameState='BASE_GAME';game.classList.remove('feature-mode');setScreen(splash,false);setScreen(featureEntry,false);setScreen(featureComplete,false);spin.disabled=false;status.textContent='GOOD LUCK!';refreshDebug()}
 function showFeatureEntry(n){
   gameState='FEATURE_ENTRY';pendingFreeSpins=n;spin.disabled=true;
   featureEntryPanel.src=`assets/free/Enter_FreeSpins_Panel_${n}.png`;setScreen(featureEntry,true);
@@ -512,8 +553,13 @@ async function doSpin(){
     if(autoplayActive){await new Promise(r=>setTimeout(r,result.totalWin>0?650:260));if(autoplayActive&&!busy&&gameState==='BASE_GAME')doSpin()}
   }
 }
-function continueAction(){
-  if(gameState==='START')enterBase();
+async function continueAction(){
+  if(gameState==='START'){
+    // If Chrome blocked autoplay, first interaction is used to unlock/play the intro.
+    // The player can press again at any time to skip it and enter the base game.
+    if(!audioManager.introStarted){const started=await audioManager.unlockSplashIntro();if(started)return;}
+    enterBase();
+  }
   else if(gameState==='FEATURE_ENTRY')startFeature();
   else if(gameState==='FEATURE_COMPLETE')finishFeature();
 }
