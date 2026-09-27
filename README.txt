@@ -55,4 +55,7 @@ v0.19.8
 - Preserved v0.19.6 win layering and 60% non-winner dimming; v0.19.7 foreground-win layering was NOT carried forward.
 
 
-v0.20.0: Updated splash artwork/layout and Free Spins background from art update package. Gameplay/Spine/reel logic retained from v0.19.8.
+v0.20.5: Updated splash artwork/layout and Free Spins background from art update package. Gameplay/Spine/reel logic retained from v0.19.8.
+
+
+v0.20.7: Symbols(7), authored collect->return->idle choreography, sequential multi-W collection, splash vocal theme removed.

@@ -11,45 +11,34 @@ const game=document.querySelector('#game'), spin=document.querySelector('#spin')
 const winEl=document.querySelector('#win'), creditEl=document.querySelector('#credit'), stakeEl=document.querySelector('#stake'), status=document.querySelector('#status'), debugEl=document.querySelector('#debug-content');
 const splash=document.querySelector('#splash'), featureEntry=document.querySelector('#feature-entry'), featureComplete=document.querySelector('#feature-complete');
 
-// v0.20.0 AudioManager — music is presentation-only and never blocks game logic.
+// v0.20.7 AudioManager — simple two-state music: quiet splash ambient -> base-game loop.
+// The vocal splash theme is intentionally removed for now. Audio is presentation-only and never blocks input.
 class PigBossAudioManager{
   constructor(){
-    this.intro=new Audio('assets/audio/PigBoss_splashscreen_theme.mp3');
     this.ambient=new Audio('assets/audio/PigBoss_splash_ambient_loop.mp3');
     this.base=new Audio('assets/audio/PigBoss_basegame_loop.mp3');
-    this.intro.preload=this.ambient.preload=this.base.preload='auto';
-    this.intro.loop=false; this.ambient.loop=true; this.base.loop=true;
+    this.ambient.preload=this.base.preload='auto';
+    this.ambient.loop=true; this.base.loop=true;
     this.musicVolume=.58; this.ambientVolume=.28; this.fadeToken=0;
-    this.intro.volume=this.musicVolume; this.ambient.volume=this.ambientVolume; this.base.volume=0;
-    this.introStarted=false; this.autoplayBlocked=false;
-    this.intro.addEventListener('ended',()=>{if(gameState==='START')this.playAmbient();});
+    this.ambient.volume=this.ambientVolume; this.base.volume=0;
   }
-  async trySplashIntro(){
-    if(this.introStarted)return true;
-    try{this.intro.currentTime=0;await this.intro.play();this.introStarted=true;this.autoplayBlocked=false;return true}
-    catch(e){this.autoplayBlocked=true;return false}
-  }
-  async unlockSplashIntro(){return this.trySplashIntro()}
   fade(audio,to,duration=650,pauseAtEnd=false){
     const token=++this.fadeToken,start=audio.volume,t0=performance.now();
     const tick=(now)=>{if(token!==this.fadeToken)return;const t=Math.min(1,(now-t0)/duration);audio.volume=start+(to-start)*t;if(t<1)requestAnimationFrame(tick);else if(pauseAtEnd&&to===0){audio.pause();audio.currentTime=0}};
     requestAnimationFrame(tick);
   }
-  async playAmbient(){
-    if(gameState!=='START')return;
-    try{this.ambient.volume=0;this.ambient.currentTime=0;await this.ambient.play();this.fade(this.ambient,this.ambientVolume,900)}catch(e){}
+  async trySplashAmbient(){
+    if(gameState!=='START'||!this.ambient.paused)return;
+    try{this.ambient.volume=this.ambientVolume;await this.ambient.play()}catch(e){}
   }
   async enterBase(){
-    // Fade whichever splash source is active; start the base loop underneath it.
-    if(!this.intro.paused)this.fade(this.intro,0,700,true);
     if(!this.ambient.paused)this.fade(this.ambient,0,700,true);
     try{this.base.volume=0;if(this.base.paused)await this.base.play();this.fade(this.base,this.musicVolume,850)}catch(e){}
   }
 }
 const audioManager=new PigBossAudioManager();
-// Browsers may permit autoplay (e.g. after prior site interaction). If not, the first
-// Press Anywhere starts the one-shot intro; a second press may skip into the game.
-setTimeout(()=>audioManager.trySplashIntro(),80);
+// Best effort only: browsers may block splash ambience until interaction.
+setTimeout(()=>audioManager.trySplashAmbient(),80);
 
 const featureEntryPanel=document.querySelector('#feature-entry-panel'), featureTotalEl=document.querySelector('#feature-total');
 const freeLeftEl=document.querySelector('#free-left'), featureWinEl=document.querySelector('#feature-win');
@@ -74,11 +63,18 @@ for(let c=0;c<4;c++){
 const VIEW_W=660,VIEW_H=580,scene=new THREE.Scene();
 const camera=new THREE.OrthographicCamera(-VIEW_W/2,VIEW_W/2,VIEW_H/2,-VIEW_H/2,.1,10);camera.position.z=5;
 const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0x000000,0);renderer.outputColorSpace=THREE.SRGBColorSpace;fxLayer.appendChild(renderer.domElement);
+// v0.20.7: frame-safe PNG/Spine handover. PNGs are hidden only after the Spine mesh has actually rendered once.
+const pendingPngHides=[];
+function queuePngHide(img){if(img&&!pendingPngHides.includes(img))pendingPngHides.push(img)}
+function flushPngHides(){while(pendingPngHides.length){const img=pendingPngHides.shift();if(img)img.style.opacity='0'}}
+function setRenderLayer(obj,order,z=null){if(!obj)return;if(z!==null)obj.position.z=z;obj.renderOrder=order;obj.traverse?.(child=>{child.renderOrder=order;if(child.material){child.material.depthTest=false;child.material.depthWrite=false;child.material.transparent=true}})}
 function resize(){renderer.setSize(Math.max(1,host.clientWidth),Math.max(1,host.clientHeight),false)}addEventListener('resize',resize);resize();
 
 // v0.19 — Spine is a presentation layer only. Reel maths/motion remain PNG/DOM driven.
 // The 660x580 Three.js view is exactly 4 x (165x145), matching the authored Spine symbols.
-const SPINE_SYMBOLS=['A','C','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z'];
+// Symbols(5) deliberately has no C skeleton. C remains on the proven PNG fallback path.
+const SPINE_SYMBOLS=['A','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z'];
+const CASH_SYMBOLS=new Set(['R','S','U','V','X','Y','Z']);
 class SpineSymbolManager{
   constructor(){this.ready=false;this.data=new Map();this.cells=Array.from({length:4},()=>Array(4).fill(null));this.assetManager=null;this.last=performance.now();this.eventLog=[];this.lastError='';this.cellErrors=[];this.focusTimer=null;this.fxData=null;this.anticipationFx=null;this.anticipationReel=-1;}
   async init(){
@@ -87,6 +83,7 @@ class SpineSymbolManager{
       await Promise.all([
         this.assetManager.loadTextureAtlasAsync('Symbols.atlas'),
         ...SPINE_SYMBOLS.map(sym=>this.assetManager.loadJsonAsync(`${sym}.json`)),
+        this.assetManager.loadJsonAsync('cashBack.json'),
         this.assetManager.loadJsonAsync('fx_anticipation.json')
       ]);
       const atlas=this.assetManager.require('Symbols.atlas');
@@ -95,6 +92,7 @@ class SpineSymbolManager{
         const parser=new spine.SkeletonJson(loader); parser.scale=1;
         this.data.set(sym,parser.readSkeletonData(this.assetManager.require(`${sym}.json`)));
       }
+      { const parser=new spine.SkeletonJson(loader); parser.scale=1; this.cashBackData=parser.readSkeletonData(this.assetManager.require('cashBack.json')); }
       { const parser=new spine.SkeletonJson(loader); parser.scale=1; this.fxData=parser.readSkeletonData(this.assetManager.require('fx_anticipation.json')); }
       this.ready=true;
       return true;
@@ -102,6 +100,12 @@ class SpineSymbolManager{
       console.error('Spine initialization failed; PNG fallback remains active.',err);
       this.lastError=`INIT: ${err?.message||err}`; this.ready=false; return false;
     }
+  }
+  makeDataMesh(skeletonData,c,r,z=-0.0002){
+    let mesh;
+    try{mesh=new spine.SkeletonMesh({skeletonData,twoColorTint:false,materialFactory:(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true;return new THREE.MeshBasicMaterial(parameters)}})}
+    catch(_){mesh=new spine.SkeletonMesh(skeletonData,(parameters)=>{parameters.depthTest=false;parameters.depthWrite=false;parameters.transparent=true})}
+    mesh.position.set(-VIEW_W/2+82.5+c*165,VIEW_H/2-72.5-r*145,z);mesh.zOffset=z;mesh.visible=true;scene.add(mesh);return mesh;
   }
   makeMesh(sym,c,r){
     const skeletonData=this.data.get(sym); if(!skeletonData)return null;
@@ -121,12 +125,12 @@ class SpineSymbolManager{
   }
   removeCell(c,r){
     const old=this.cells[c][r]; if(!old)return;
-    scene.remove(old.mesh); if(typeof old.mesh.dispose==='function')old.mesh.dispose(); this.cells[c][r]=null;
+    scene.remove(old.mesh); if(typeof old.mesh.dispose==='function')old.mesh.dispose(); if(old.backMesh){scene.remove(old.backMesh);if(typeof old.backMesh.dispose==='function')old.backMesh.dispose()} this.cells[c][r]=null;
   }
   resetToPng(){
     this.stopAnticipationFx();
     for(let c=0;c<4;c++)for(let r=0;r<4;r++){
-      this.removeCell(c,r); const img=slots[c]?.[r+1]; if(img)img.style.opacity='1';
+      const img=slots[c]?.[r+1]; if(img)img.style.opacity='1'; this.removeCell(c,r);
     }
   }
   showCell(c,r,sym,animation='land'){
@@ -139,8 +143,13 @@ class SpineSymbolManager{
       mesh.state.setAnimation(0,animation,false); mesh.state.addAnimation(0,'idle',true,0);
       // Build the first posed geometry immediately; don't wait for the global render tick.
       mesh.update(0);
-      this.cells[c][r]={mesh,sym,brightness:1,targetBrightness:1};
-      const img=slots[c]?.[r+1]; if(img)img.style.opacity='0';
+      let backMesh=null;
+      if(CASH_SYMBOLS.has(sym)&&this.cashBackData){
+        backMesh=this.makeDataMesh(this.cashBackData,c,r,-0.001);
+        backMesh.state.clearTracks();backMesh.state.setAnimation(0,animation,false);backMesh.state.addAnimation(0,'idle',true,0);backMesh.update(0);
+      }
+      this.cells[c][r]={mesh,backMesh,sym,brightness:1,targetBrightness:1};
+      const img=slots[c]?.[r+1]; queuePngHide(img);
       return true;
     }catch(err){
       console.error(`Spine cell ${c}:${r} (${sym}) failed; keeping PNG.`,err);
@@ -156,6 +165,10 @@ class SpineSymbolManager{
     if(!this.ready||!matrix){report.failed=16;return report;}
     for(let c=0;c<4;c++)for(let r=0;r<4;r++){
       const sym=matrix[c][r],cell=this.cells[c]?.[r];
+      if(!this.data.has(sym)){ // e.g. C: intentionally rendered by PNG in Symbols(5)
+        if(cell)this.removeCell(c,r); const img=slots[c]?.[r+1]; if(img)img.style.opacity='1';
+        report.existing++; continue;
+      }
       if(cell?.sym===sym){report.existing++;continue;}
       if(this.showCell(c,r,sym,animation))report.created++;else report.failed++;
     }
@@ -163,7 +176,7 @@ class SpineSymbolManager{
   }
   cellDiagnostic(matrix){
     const lines=[`SPINE CELLS: ${this.cellCount()} / 16 · runtime ${this.ready?'READY':'NOT READY'}`];
-    if(matrix){for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r],sym=matrix[c][r];lines.push(`R${c+1}/row${r+1} ${sym}: ${cell?`ACTIVE ${cell.sym}`:'MISSING'}`)}}
+    if(matrix){for(let c=0;c<4;c++)for(let r=0;r<4;r++){const cell=this.cells[c]?.[r],sym=matrix[c][r];lines.push(`R${c+1}/row${r+1} ${sym}: ${cell?`ACTIVE ${cell.sym}`:(this.data.has(sym)?'MISSING':'PNG FALLBACK')}`)}}
     if(this.lastError)lines.push(`LAST SPINE ERROR: ${this.lastError}`);
     return lines.join('\n');
   }
@@ -208,6 +221,56 @@ class SpineSymbolManager{
       this.focusTimer=null;
     },holdMs);
   }
+  resetSequenceFrames(mesh){
+    // Spine 4.3 sequence timelines keep their selected frame on the Slot.
+    // Empty IDLE animations do not overwrite it, so explicitly restore sequence attachments to frame 0.
+    if(!mesh?.skeleton?.slots)return;
+    for(const slot of mesh.skeleton.slots){
+      try{
+        if(slot?.attachment?.sequence) slot.sequenceIndex=0;
+      }catch(_){}
+    }
+  }
+  prepareAnimationFromFrameZero(cell,name,loop=false){
+    if(!cell?.mesh)return null;
+    const mesh=cell.mesh;
+    mesh.state.clearTracks();
+    mesh.skeleton?.setBonesToSetupPose?.();
+    mesh.skeleton?.setSlotsToSetupPose?.();
+    this.resetSequenceFrames(mesh);
+    const entry=mesh.state.setAnimation(0,name,loop);
+    if(entry){entry.trackTime=0;entry.animationLast=-1;entry.trackLast=-1;}
+    // Apply exactly t=0 before the normal render clock advances.
+    mesh.update(0);
+    this.resetSequenceFrames(mesh);
+    mesh.update(0);
+    mesh.visible=true;
+    return entry;
+  }
+  resetCellToIdle(cell){
+    if(!cell?.mesh)return false;
+    try{
+      // Spine 4.3 has separate bone/slot setup-pose methods (not setToSetupPose).
+      // Reset first, then apply idle at t=0 so no final COLLECT pose can leak into the restored cell.
+      this.prepareAnimationFromFrameZero(cell,'idle',true);
+      return true;
+    }catch(err){console.error('Spine idle reset failed',err);return false}
+  }
+  playCellAnimation(cell,name,{loop=false,queueIdle=true}={}){
+    if(!cell?.mesh)return {ok:false,error:'NO SPINE CELL'};
+    try{
+      const available=cell.mesh.skeleton?.data?.findAnimation?.(name);
+      if(!available)return {ok:false,error:`ANIMATION '${name}' MISSING`};
+      cell.mesh.visible=true;
+      cell.mesh.state.clearTracks();
+      cell.mesh.state.setAnimation(0,name,loop);
+      if(queueIdle&&!loop)cell.mesh.state.addAnimation(0,'idle',true,0);
+      // Advance by a tiny non-zero delta. Some 4.3 exports have no visible keyed
+      // change at exactly t=0, which made a correctly-routed event look static.
+      cell.mesh.update(1/120);
+      return {ok:true};
+    }catch(err){return {ok:false,error:err?.message||String(err)};}
+  }
   playWin(positions,source='RESULT'){
     if(!this.ready)return {requested:0,played:0,missing:0};
     const seen=new Set(); for(const [c,r] of positions)seen.add(`${c}:${r}`);
@@ -218,14 +281,11 @@ class SpineSymbolManager{
       const cell=this.cells[c]?.[r];
       if(!cell){missing++;events.push(`R${c+1}/row${r+1}: NO SPINE CELL`);continue}
       try{
-        // Explicitly restart the pose/track so WIN is visible even if LAND/IDLE was queued.
         cell.mesh.visible=true;
-        // Spine 4.3 SkeletonMesh does not expose skeleton.setToSetupPose().
-        // Track reset is sufficient here; presentation must never fail on a cosmetic pose reset.
         cell.mesh.state.clearTracks();
-        const entry=cell.mesh.state.setAnimation(0,'win',false);
+        cell.mesh.state.setAnimation(0,'win',false);
         cell.mesh.state.addAnimation(0,'idle',true,0);
-        cell.mesh.update(0); // apply the newly selected animation immediately this render frame
+        cell.mesh.update(0);
         played++;events.push(`R${c+1}/row${r+1} ${cell.sym}: WIN`);
       }catch(err){
         missing++;events.push(`R${c+1}/row${r+1} ${cell.sym}: ERROR`);
@@ -234,6 +294,79 @@ class SpineSymbolManager{
     }
     this.eventLog=[`${source}: requested ${seen.size}, played ${played}, missing ${missing}`,`WIN FOCUS: winners 100% · others 60%`,...events].slice(0,20);
     return {requested:seen.size,played,missing};
+  }
+  animationDuration(cell,name){
+    try{return cell?.mesh?.skeleton?.data?.findAnimation?.(name)?.duration||0}catch(_){return 0}
+  }
+  async playReturnThenIdle(cell){
+    if(!cell?.mesh)return;
+    const hasReturn=!!cell.mesh.skeleton?.data?.findAnimation?.('return');
+    if(hasReturn){
+      this.prepareAnimationFromFrameZero(cell,'return',false);
+      const ms=Math.max(80,this.animationDuration(cell,'return')*1000);
+      await new Promise(r=>setTimeout(r,ms));
+    }
+    this.resetCellToIdle(cell);
+  }
+  async playCollector(result){
+    if(!this.ready||!result?.collectorActive)return {requested:0,played:0,missing:0};
+    // Every visible W gets its own complete collection pass. Order is deterministic:
+    // reel left->right, then row top->bottom. This is presentation of the already-awarded maths only.
+    const collectors=[...(result.wPositions||[])].sort((a,b)=>a[0]-b[0]||a[1]-b[1]);
+    if(!collectors.length)return {requested:0,played:0,missing:0};
+    const gems=(result.gems||[]).filter(g=>CASH_SYMBOLS.has(currentMatrix?.[g.position[0]]?.[g.position[1]]));
+    const focus=new Set([...collectors.map(([c,r])=>`${c}:${r}`),...gems.map(g=>`${g.position[0]}:${g.position[1]}`)]);
+    this.focusWinningCells(focus,Math.max(2200,collectors.length*(900+gems.length*120)));
+    let played=0,missing=0; const events=[];
+
+    for(let wi=0;wi<collectors.length;wi++){
+      const [wc,wr]=collectors[wi],wCell=this.cells[wc]?.[wr];
+      if(!wCell){missing++;events.push(`W${wi+1} R${wc+1}/row${wr+1}: MISSING`);continue}
+      let wStarted=false;
+      try{
+        wCell.mesh.visible=true;setRenderLayer(wCell.mesh,100,0);
+        this.prepareAnimationFromFrameZero(wCell,'collect',false);wStarted=true;played++;
+      }catch(err){missing++;console.error(`W${wi+1} collect failed`,err)}
+      const target=wCell.mesh.position.clone();target.z=1;
+      const fly=[];
+      for(let i=0;i<gems.length;i++){
+        const [c,r]=gems[i].position,cell=this.cells[c]?.[r];
+        if(!cell){missing++;continue}
+        try{
+          cell.mesh.visible=true;this.prepareAnimationFromFrameZero(cell,'collect',false);
+          // Only the cash foreground travels. cashBack stays at its authored reel cell.
+          setRenderLayer(cell.mesh,1000,1);
+          if(cell.backMesh){
+            cell.backMesh.visible=true;setRenderLayer(cell.backMesh,0,-0.001);
+            cell.backMesh.state.clearTracks();cell.backMesh.state.setAnimation(0,'idle',true);cell.backMesh.update(0);
+          }
+          const start=cell.mesh.position.clone();start.z=1;cell.mesh.position.z=1;played++;
+          fly.push(new Promise(resolve=>setTimeout(()=>{
+            const t0=performance.now(),dur=650;
+            const tick=(now)=>{const t=Math.min(1,(now-t0)/dur),ease=1-Math.pow(1-t,3);cell.mesh.position.lerpVectors(start,target,ease);if(t<1)requestAnimationFrame(tick);else{cell.mesh.visible=false;resolve()}};
+            requestAnimationFrame(tick);
+          },i*120)));
+        }catch(err){missing++;console.error(`Cash collect failed R${c+1}/row${r+1}`,err)}
+      }
+      await Promise.all(fly);
+      await new Promise(r=>setTimeout(r,100));
+
+      // Respawn each cash foreground at its original cell and let the authored RETURN animation
+      // bridge from collect back to the standard symbol. cashBack never moved.
+      const returns=[];
+      for(const g of gems){
+        const [c,r]=g.position,cell=this.cells[c]?.[r];if(!cell)continue;
+        cell.mesh.position.set(-VIEW_W/2+82.5+c*165,VIEW_H/2-72.5-r*145,0);
+        setRenderLayer(cell.mesh,10,0);cell.mesh.visible=true;
+        returns.push(this.playReturnThenIdle(cell));
+      }
+      if(wStarted){setRenderLayer(wCell.mesh,10,0);returns.push(this.playReturnThenIdle(wCell))}
+      await Promise.all(returns);
+      events.push(`W${wi+1} R${wc+1}/row${wr+1}: collect → return → idle`);
+      if(wi<collectors.length-1)await new Promise(r=>setTimeout(r,100));
+    }
+    this.eventLog=[`MULTI COLLECT: ${collectors.length} W · ${gems.length} cash · sequential passes`,...events,...gems.map(g=>`R${g.position[0]+1}/row${g.position[1]+1}: collect → return → next W`)].slice(0,20);
+    return {requested:collectors.length*(gems.length+1),played,missing};
   }
   forceWinAll(matrix){
     // Always request the mathematical 4x4, not merely whatever happened to register.
@@ -251,11 +384,12 @@ class SpineSymbolManager{
       const speed=target<current?18:13; cell.brightness=current+(target-current)*(1-Math.exp(-speed*dt));
       if(Math.abs(cell.brightness-target)<.005)cell.brightness=target;
       this.setCellBrightness(cell,cell.brightness);
+      if(cell.backMesh?.skeleton?.color){cell.backMesh.skeleton.color.r=cell.brightness;cell.backMesh.skeleton.color.g=cell.brightness;cell.backMesh.skeleton.color.b=cell.brightness;cell.backMesh.update(dt)}
       cell.mesh.update(dt)
     }catch(err){
       console.error(`Spine runtime update failed at ${c}:${r}; reverting that cell to PNG.`,err);
       this.lastError=`UPDATE R${c+1}/row${r+1} ${cell.sym}: ${err?.message||err}`; this.cellErrors.push(this.lastError);this.cellErrors=this.cellErrors.slice(-8);
-      this.removeCell(c,r);const img=slots[c]?.[r+1];if(img)img.style.opacity='1';
+      const img=slots[c]?.[r+1];if(img)img.style.opacity='1';this.removeCell(c,r);
     }}
   }
 }
@@ -323,7 +457,7 @@ function evaluateFeatureSpin(mode,m){
 let lastDebugCore='Press anywhere to start.';
 let autoplayActive=false;
 function diagnosticStats(){
-  const spineState=spineSymbols.ready?`READY · 19 symbols · land / idle / win · cells ${spineSymbols.cellCount()}/16`:`FALLBACK TO PNG${spineSymbols.lastError?' · '+spineSymbols.lastError:''}`;
+  const spineState=spineSymbols.ready?`READY · 18 Spine symbols + cashBack · cells ${spineSymbols.cellCount()}/16`:`FALLBACK TO PNG${spineSymbols.lastError?' · '+spineSymbols.lastError:''}`;
   const sessionRtp=totalStaked>0?(totalReturned/totalStaked*100):0;
   return `\n\nSPINE 4.3\n${spineState}\n\nACCOUNTANCY / RTP\nTheoretical RTP: ${THEORETICAL_RTP.toFixed(3)}%\nSession RTP: ${sessionRtp.toFixed(3)}%\nPaid spins: ${paidSpins}\nTotal staked: ${money(totalStaked)}\nTotal returned: ${money(totalReturned)}\nCredit: ${money(credit)}`;
 }
@@ -492,11 +626,16 @@ async function spinOnce(mode,isFeature=false,forcedStops=null){
   if(result.collectorActive){collectorPositions.push(...result.wPositions);for(const g of result.gems)collectorPositions.push(g.position)}
   const scatterPositions=[];
   if(result.scatterCount>=3){for(let c=0;c<4;c++)for(let r=0;r<4;r++)if(currentMatrix[c][r]==='F')scatterPositions.push([c,r])}
-  const winPositions=[...lineWinPositions,...collectorPositions,...scatterPositions];
-  let spineWinReport={requested:0,played:0,missing:0};
-  try{spineWinReport=spineSymbols.playWin(winPositions,'GAME RESULT')}catch(err){console.error('Non-fatal Spine win presentation error',err)}
+  // v0.20.7: explicit presentation dispatch. Ordinary line/scatter wins use the proven
+  // WIN route; collector choreography is a separate event and can never swallow WIN routing.
+  let lineReport={requested:0,played:0,missing:0};
+  let scatterReport={requested:0,played:0,missing:0};
+  let collectReport={requested:0,played:0,missing:0};
+  try{if(lineWinPositions.length)lineReport=spineSymbols.playWin(lineWinPositions,'LINE PRESENTATION')}catch(err){console.error('Non-fatal Spine line presentation error',err)}
+  try{if(scatterPositions.length)scatterReport=spineSymbols.playWin(scatterPositions,'SCATTER PRESENTATION')}catch(err){console.error('Non-fatal Spine scatter presentation error',err)}
+  if(result.collectorActive){try{collectReport=await spineSymbols.playCollector(result)}catch(err){console.error('Non-fatal Spine collect presentation error',err)}}
   const uniqueCount=(positions)=>new Set(positions.map(([c,r])=>`${c}:${r}`)).size;
-  const spineRouteSummary=`LINE WIN CELLS: ${uniqueCount(lineWinPositions)}\nCOLLECT CELLS: ${uniqueCount(collectorPositions)}\nSCATTER CELLS: ${uniqueCount(scatterPositions)}\nTOTAL UNIQUE WIN CELLS: ${uniqueCount(winPositions)}`;
+  const spineRouteSummary=`LINE PRESENTATION: requested ${uniqueCount(lineWinPositions)} · played ${lineReport.played} · missing ${lineReport.missing}\nCOLLECT PRESENTATION: requested ${uniqueCount(collectorPositions)} · played ${collectReport.played} · missing ${collectReport.missing}\nSCATTER PRESENTATION: requested ${uniqueCount(scatterPositions)} · played ${scatterReport.played} · missing ${scatterReport.missing}`;
   renderDebug(result,stops,currentMatrix);
   lastDebugCore += `\n\nSPINE CELL REGISTRATION\nrequested ${spineEnsure.requested} · created ${spineEnsure.created} · existing ${spineEnsure.existing} · failed ${spineEnsure.failed}\n${spineSymbols.cellDiagnostic(currentMatrix)}\n\nSPINE RESULT ROUTING\n${spineRouteSummary}\n${spineSymbols.diagnostic()}`;refreshDebug();
   if(isFeature){lastDebugCore=`FEATURE SPIN · ${mode}\n`+lastDebugCore+`\n\nFEATURE TOTAL: ${featureTotal.toFixed(2)}`;refreshDebug()}
@@ -555,9 +694,7 @@ async function doSpin(){
 }
 async function continueAction(){
   if(gameState==='START'){
-    // If Chrome blocked autoplay, first interaction is used to unlock/play the intro.
-    // The player can press again at any time to skip it and enter the base game.
-    if(!audioManager.introStarted){const started=await audioManager.unlockSplashIntro();if(started)return;}
+    // First interaction always enters the game. Audio is best-effort and never consumes input.
     enterBase();
   }
   else if(gameState==='FEATURE_ENTRY')startFeature();
@@ -582,16 +719,6 @@ addEventListener('keydown',e=>{
   if(e.code!=='Space'||e.repeat)return;const tag=(e.target?.tagName||'').toLowerCase();if(['input','textarea','select'].includes(tag)||e.target?.isContentEditable)return;e.preventDefault();
   if(['START','FEATURE_ENTRY','FEATURE_COMPLETE'].includes(gameState))continueAction();else doSpin();
 });
-// Temporary v0.19.2 Spine diagnostic: direct animation test, independent of paylines/maths.
-const forceSpineWin=document.createElement('button');
-forceSpineWin.id='force-spine-win';forceSpineWin.textContent='FORCE SPINE WIN';
-Object.assign(forceSpineWin.style,{position:'absolute',right:'8px',top:'28px',zIndex:'40',fontSize:'10px',padding:'5px 7px',opacity:'.82'});
-game.appendChild(forceSpineWin);
-forceSpineWin.addEventListener('click',()=>{
-  const report=spineSymbols.forceWinAll(currentMatrix);
-  lastDebugCore=`DEBUG: FORCE SPINE WIN\nrequested ${report.requested} · played ${report.played} · missing ${report.missing}\nregistration: created ${report.ensure?.created??0} · existing ${report.ensure?.existing??0} · failed ${report.ensure?.failed??0}\n\n${spineSymbols.cellDiagnostic(currentMatrix)}\n\n${spineSymbols.diagnostic()}\n\n`+lastDebugCore;
-  refreshDebug();
-});
 updateAccount();refreshDebug();
 const initialMode='A',initialStops=chooseStops(initialMode);draw(initialMode,initialStops);let spineFrame=performance.now();
-renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min(.05,(now-spineFrame)/1000);spineFrame=now;spineSymbols.update(dt);renderer.render(scene,camera)});
+renderer.setAnimationLoop(()=>{const now=performance.now(),dt=Math.min(.05,(now-spineFrame)/1000);spineFrame=now;spineSymbols.update(dt);renderer.render(scene,camera);flushPngHides()});
