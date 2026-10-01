@@ -1,10 +1,10 @@
 *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#061b27;font-family:Arial,sans-serif}body{display:grid;place-items:center}#game{position:relative;width:min(100vw,56.25vh);aspect-ratio:720/1280;overflow:hidden;background:#075f7e;box-shadow:0 0 60px #0008}#bg{position:absolute;width:100%;height:100%;object-fit:cover}#logo{position:absolute;left:4%;top:2.5%;width:92%;height:auto}#reel-shell{position:absolute;left:1.4%;top:26%;width:97.2%;aspect-ratio:700/620}#reel-bg,#reel-frame{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#reel-bg{z-index:0}#three{position:absolute;z-index:1;left:2.85%;top:3.2%;width:94.3%;height:93.55%;overflow:hidden}#reel-window{position:absolute;inset:0;display:grid;grid-template-columns:repeat(4,1fr);z-index:1;overflow:hidden}
 .reel-column{position:relative;overflow:hidden;height:100%}
 .reel-track{position:absolute;left:0;top:0;width:100%;height:150%;will-change:transform;transform:translateY(-16.6666667%)}
-.reel-track img{display:block;width:100%;height:16.6666667%;object-fit:contain;will-change:transform,opacity;backface-visibility:hidden}
+.reel-track .reel-symbol{display:block;width:100%;height:16.6666667%;object-fit:contain;will-change:transform,opacity;backface-visibility:hidden}
 /* v0.6: blur is artwork-driven. No CSS blur/filter is applied. */
-.reel-column.running .reel-track img{transform:scaleY(1.025);opacity:.98}
-.reel-column.slow .reel-track img{transform:scaleY(1.006);opacity:1}
+.reel-column.running .reel-track .reel-symbol{transform:scaleY(1.025);opacity:.98}
+.reel-column.slow .reel-track .reel-symbol{transform:scaleY(1.006);opacity:1}
 .reel-column.settle{animation:reelColumnSettle .115s ease-out}
 /* Start at exactly zero so landing can never snap upward. Impact moves DOWN first, then a tiny rebound. */
 @keyframes reelColumnSettle{0%{transform:translateY(0)}34%{transform:translateY(.48%)}68%{transform:translateY(-.12%)}100%{transform:translateY(0)}}#fx-layer{position:absolute;inset:0;z-index:2;pointer-events:none}#fx-layer canvas{display:block;width:100%!important;height:100%!important}#reel-frame{z-index:2}#status{position:absolute;top:76.5%;left:50%;transform:translateX(-50%);font-weight:900;font-size:clamp(10px,2.2vw,20px);color:white;text-shadow:0 2px 4px #000;letter-spacing:.12em}#spin{position:absolute;top:78%;left:50%;transform:translateX(-50%);width:22%;aspect-ratio:1;border:0;background:transparent;padding:0;cursor:pointer;transition:.12s}#spin:hover{transform:translateX(-50%) scale(1.05)}#spin:active{transform:translateX(-50%) scale(.96)}#spin:disabled{filter:grayscale(.8);opacity:.65;cursor:default}#spin img{width:100%;height:100%;object-fit:contain}.spinning #spin img{animation:rot .65s linear infinite}@keyframes rot{to{transform:rotate(360deg)}}#hud{position:absolute;left:14%;right:14%;bottom:4.4%;display:flex;justify-content:space-between;gap:5%}#hud>div{width:48%;height:58px;background:#050505;border-radius:16px;color:#fff;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:inset 0 0 0 2px #ffffff16}small{font-size:10px;color:#aaa}b{font-size:18px}#version{position:absolute;bottom:1%;width:100%;text-align:center;color:#ffffff80;font-size:9px;letter-spacing:.15em}
@@ -49,7 +49,9 @@
 #game.feature-mode #status{top:75.2%}
 #autoplay.active{filter:brightness(1.18);transform:scale(.97)}
 /* v0.19 Spine presentation: PNGs remain the reel renderer; landed cells hand off to the Three.js Spine layer. */
-.reel-track img{transition:opacity .035s linear}
+/* PNG/Spine handoff is atomic after a rendered Spine frame. A CSS opacity fade
+   would overlap two different poses at landing and briefly ghost the symbol. */
+.reel-track .reel-symbol{transition:none}
 
 /* v0.19.9 splash artwork refresh */
 #splash{background:#000;justify-content:flex-start;overflow:hidden}
@@ -59,3 +61,10 @@
 #splash .splash-info-02{position:absolute;left:3.9%;bottom:1.8%;width:92.2%;height:auto;z-index:2}
 /* v0.20.1 splash logo placement from SplashExample reference */
 #splash .splash-game-logo{position:absolute;left:8.5%;top:50.16875%;width:83%;height:auto;z-index:2;filter:drop-shadow(0 7px 7px #0007)}
+
+#settings-dialog{background:#062e40;color:#fff;border:1px solid #76d4ff;border-radius:14px;padding:24px;max-width:90vw}#settings-dialog::backdrop{background:#0009}#settings-dialog label{display:block;margin:18px 0}#settings-dialog button,#debug-feature{padding:9px 14px;cursor:pointer}#debug[hidden]{display:none!important}#debug-feature{margin-bottom:10px}
+/* Account text follows the portrait game width, including short desktop windows. */
+#game{container-type:inline-size}
+.account{gap:clamp(2px,1cqw,8px)}
+.account small{font-size:clamp(7px,2.2cqw,16px)}
+.account b{font-size:clamp(12px,4.4cqw,30px)}

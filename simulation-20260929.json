@@ -1,0 +1,17 @@
+{
+  "seed": 20260929,
+  "paidSpins": 1000000,
+  "freeSpins": 76200,
+  "features": 7505,
+  "observedRtpPercent": 96.91275,
+  "approximate95PercentInterval": [
+    95.50153026429592,
+    98.32396973570295
+  ],
+  "baseRtpPercent": 46.6763,
+  "featureRtpPercent": 50.23645,
+  "paidCycleHitRatePercent": 13.9852,
+  "maxPaidCycleWinInStakes": 329,
+  "declaredReferenceRtpPercent": 96.651,
+  "note": "Seeded Monte Carlo estimate, not theoretical RTP or certification. Each sample includes the complete triggered feature."
+}

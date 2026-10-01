@@ -1,0 +1,272 @@
+[
+  {
+    "symbol": "A",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 6.81,
+      "pixelsChangedOver20": 1527
+    }
+  },
+  {
+    "symbol": "D",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 9.19,
+      "pixelsChangedOver20": 2333
+    }
+  },
+  {
+    "symbol": "E",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 9.71,
+      "pixelsChangedOver20": 2641
+    }
+  },
+  {
+    "symbol": "F",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 29.64,
+      "pixelsChangedOver20": 6650
+    }
+  },
+  {
+    "symbol": "G",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 10.56,
+      "pixelsChangedOver20": 3012
+    }
+  },
+  {
+    "symbol": "J",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 4.78,
+      "pixelsChangedOver20": 1004
+    }
+  },
+  {
+    "symbol": "K",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.96,
+      "pixelsChangedOver20": 1487
+    }
+  },
+  {
+    "symbol": "M",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 14.29,
+      "pixelsChangedOver20": 3660
+    }
+  },
+  {
+    "symbol": "Q",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 10.58,
+      "pixelsChangedOver20": 2115
+    }
+  },
+  {
+    "symbol": "R",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.51,
+      "pixelsChangedOver20": 493
+    }
+  },
+  {
+    "symbol": "S",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.29,
+      "pixelsChangedOver20": 483
+    }
+  },
+  {
+    "symbol": "T",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 8.91,
+      "pixelsChangedOver20": 1767
+    }
+  },
+  {
+    "symbol": "U",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.24,
+      "pixelsChangedOver20": 480
+    }
+  },
+  {
+    "symbol": "V",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.28,
+      "pixelsChangedOver20": 484
+    }
+  },
+  {
+    "symbol": "W",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    }
+  },
+  {
+    "symbol": "X",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 7.24,
+      "pixelsChangedOver20": 481
+    }
+  },
+  {
+    "symbol": "Y",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 6.62,
+      "pixelsChangedOver20": 422
+    }
+  },
+  {
+    "symbol": "Z",
+    "zero": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "firstFrame": {
+      "meanMaxChannelDifference": 0,
+      "pixelsChangedOver20": 0
+    },
+    "afterHandoff": {
+      "meanMaxChannelDifference": 6.26,
+      "pixelsChangedOver20": 349
+    }
+  }
+]
