@@ -1,0 +1,28 @@
+✔ known line, collector and scatter awards (0.784ms)
+✔ repeatable results; malformed reels fail before play (6.3055ms)
+✔ award settled before presentation; input locked and completion idempotent (0.5889ms)
+✔ trigger transition blocks a second paid spin throughout entry delay (0.4078ms)
+✔ entire forced feature is excluded from real balance and session RTP (0.8882ms)
+✔ natural feature credits exactly once without requiring completion-screen input (0.6906ms)
+✔ insufficient funds and wrong-state requests leave the ledger unchanged (0.3562ms)
+✔ landing starts at authored t=0 even after a long render interval (1.2868ms)
+✔ win dispatch waits for a rendered landing frame (0.19ms)
+✔ removed cells cannot leave a stale PNG hide behind (0.1255ms)
+✔ late asset completion cannot change artwork or enable Spine midway through a spin (0.1296ms)
+✔ a missing matching cash pose retains the full PNG (0.1099ms)
+✔ 20,000 sampled base/feature results match the original evaluator exactly (156.9417ms)
+✔ crossfades finish independently; mute and volume apply during a fade (0.6451ms)
+✔ one bad skeleton or parse error does not disable valid symbols (0.4967ms)
+✔ anticipation remains forward, lands exactly and joins at incoming velocity (2.1478ms)
+✔ temporary anticipation landing presents the chosen symbols without altering real strips (0.2968ms)
+✔ actual animator uses correct landing window in normal and anticipated spins (4.0308ms)
+✔ moving slots replace pixels synchronously and reuse decoded artwork (0.8625ms)
+✔ missing optional blur uses sharp artwork; missing sharp artwork fails loading (0.3033ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 220.7999
