@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isBigWin } from './presentation/big-win-policy.js';
 import { LAYOUT, BLUR_SYMBOLS, DECLARED_RTP } from './engine/config.js';
 import { GameEngine } from './engine/game-engine.js';
 import { seededRandom } from './engine/random.js';
@@ -102,6 +103,17 @@ async function presentSpin(record){
 }
 
 const wait = ms => new Promise(resolve => setTimeout(resolve,ms));
+let bigWinReady;
+function loadBigWin(){
+  return bigWinReady ??= import('./presentation/big-win.js')
+    .then(({createBigWin})=>createBigWin(game))
+    .catch(error=>{console.warn('Big-win unavailable:',error.message);return null;});
+}
+async function playBigWin(awardCents,force=false){
+  if(!force&&!isBigWin(awardCents,engine.stakeCents))return;
+  const presentation=await Promise.race([loadBigWin(),wait(3000).then(()=>null)]);
+  await presentation?.play(awardCents,engine.stakeCents,{force});
+}
 let busy=false, autoplayActive=false, autoplayEpoch=0;
 function money(v){return Number(v).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2})}
 function updateAccount(showAward=true){
@@ -144,6 +156,7 @@ async function doSpin(forced=false){
   engine.completeBase(record.id);
   updateAccount();refreshDebug();game.classList.remove('spinning');
   status.textContent=record.awardCents>0?'WINNER!!!':'GOOD LUCK!';
+  await playBigWin(record.awardCents);
   if(record.forced){lastDebugCore='DEBUG: excluded from credit and session RTP\n'+lastDebugCore;refreshDebug()}
   if(engine.state==='FEATURE_TRANSITION'){
     stopAutoplay();
@@ -173,6 +186,7 @@ async function startFeature(){
     await safelyPresent(record);
     engine.completeFeatureSpin(record.id);updateAccount();refreshDebug();
     status.textContent=record.result.collectorActive?`COLLECT x${record.result.collectorMultiplier}`:(record.awardCents>0?`FREE SPIN WIN ${money(record.awardCents/100)}`:'FREE SPIN');
+    await playBigWin(record.awardCents);
     await wait(record.awardCents>0?850:420);
   }
   featureTotalEl.textContent=money(engine.featureTotalCents/100);
@@ -182,7 +196,7 @@ async function startFeature(){
 }
 function continueAction(){
   if(busy)return;
-  if(engine.enterBase()){audioManager.enterBase();showBase()}
+  if(engine.enterBase()){audioManager.enterBase();showBase();loadBigWin().then(presentation=>presentation?.preload())}
   else if(engine.state==='FEATURE_ENTRY')startFeature();
   else if(engine.finishFeature()){showBase();status.textContent=engine.lastWinCents>0?'WINNER!!!':'GOOD LUCK!'}
 }
@@ -191,6 +205,12 @@ const settingsDialog=document.querySelector('#settings-dialog');
 document.querySelector('#settings').addEventListener('click',()=>{stopAutoplay();settingsDialog.showModal()});
 document.querySelector('#music-volume').addEventListener('input',e=>audioManager.setVolume(e.target.value));
 document.querySelector('#music-muted').addEventListener('change',e=>{audioManager.setMuted(e.target.checked);if(!e.target.checked&&engine.state!=='START')audioManager.enterBase()});
+document.querySelector('#debug-big-win').addEventListener('click',async()=>{
+  if(!debugEnabled||busy||engine.state!=='BASE_GAME')return;
+  stopAutoplay();busy=true;spin.disabled=true;
+  try{await playBigWin(50*engine.stakeCents,true)}
+  finally{busy=false;spin.disabled=false;document.querySelector('#debug-big-win').focus()}
+});
 document.querySelector('#debug-feature').addEventListener('click',()=>{
   if(!debugEnabled||busy||engine.state!=='BASE_GAME')return;
   stopAutoplay();doSpin(true);
