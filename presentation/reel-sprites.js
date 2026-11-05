@@ -4,8 +4,8 @@ export async function loadReelSprites(symbols, { loadImage = decodeImage } = {})
   const sharp = new Map(), blurred = new Map();
   await Promise.all([...symbols].map(async symbol => {
     const [normal, blur] = await Promise.all([
-      loadImage(`assets/${symbol}.png`),
-      loadImage(`assets/blur/${symbol}_blur.png`).catch(() => null),
+      loadImage(`assets/${symbol}.webp`),
+      loadImage(`assets/blur/${symbol}_blur.webp`).catch(() => null),
     ]);
     sharp.set(symbol, normal);
     blurred.set(symbol, blur || normal);

@@ -6,7 +6,7 @@ export const GEM_SYMBOLS=new Set(Object.keys(GEM_VALUES));
 
 
 export const LAYOUT = Object.freeze({ columns: 4, rows: 4, cellWidth: 165, cellHeight: 145 });
-export const MOTION = Object.freeze({ durations: [1080,1270,1460,1650], steps: [22,26,30,34] });
+export const MOTION = Object.freeze({ durations: [1050,1250,1450,1650], steps: [24,28,32,36] });
 export const DECLARED_RTP = 96.651;
 export const SPINE_SYMBOLS = ['A','D','E','F','G','J','K','M','Q','R','S','T','U','V','W','X','Y','Z'];
 export const BLUR_SYMBOLS = new Set([...SPINE_SYMBOLS, 'C']);
