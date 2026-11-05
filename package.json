@@ -1,6 +1,6 @@
 {
   "name": "pigboss-reference-refined",
-  "version": "0.21.2",
+  "version": "0.22.0-smooth",
   "private": true,
   "type": "module",
   "scripts": {

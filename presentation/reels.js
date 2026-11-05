@@ -1,5 +1,6 @@
 import { LAYOUT, MOTION } from '../engine/config.js';
 import { anticipationPlan, anticipationDistance, presentationStrip, wrap } from './motion.js';
+import { reelProgress, reelVelocity } from './reel-motion.js';
 
 export function createReelAnimator({reels,matrixFromStops,spineSymbols,columns,tracks,fillTrack,report}) {
 async function animateSpin(mode,targetStops){
@@ -7,7 +8,7 @@ async function animateSpin(mode,targetStops){
   const baseDurations=MOTION.durations;
   const targetMatrix=matrixFromStops(mode,targetStops);
   const totalSteps=MOTION.steps;
-  // Preserve the reference normal-spin travel and timing.
+  // Rampage's cadence, with Pig Boss's selected stops and landing lifecycle.
   const starts=targetStops.map((p,c)=>{const strip=reels[`reel${mode}${c+1}`];return(p+totalSteps[c])%strip.length});
   const lastWhole=[-1,-1,-1,-1],lastBlur=[null,null,null,null],done=[false,false,false,false],start=performance.now();
   const landedScatters=[0,0,0,0];
@@ -15,19 +16,9 @@ async function animateSpin(mode,targetStops){
   const presentationStrips=[null,null,null,null];
   const anticipationTiming=[];
   let sequenceActive=false;
-  const progress=t=>{
-    if(t<.16){const q=t/.16;return .15*q*q*(3-2*q)}
-    if(t<.52){const q=(t-.16)/.36;return .15+.50*q}
-    const q=(t-.52)/.48;return .65+.35*(1-Math.pow(1-q,3.15))
-  };
-  const progressDerivative=t=>{
-    if(t<.16){const q=t/.16;return .15*(6*q-6*q*q)/.16}
-    if(t<.52)return .50/.36;
-    const q=(t-.52)/.48;return .35*3.15*Math.pow(1-q,2.15)/.48;
-  };
   function normalMotion(c,now){
     const elapsed=now-start,t=Math.min(1,elapsed/baseDurations[c]);
-    return {distance:totalSteps[c]*progress(t),velocity:totalSteps[c]*progressDerivative(t)/baseDurations[c]};
+    return {distance:totalSteps[c]*reelProgress(t),velocity:totalSteps[c]*reelVelocity(t)/baseDurations[c]};
   }
   function makePresentationStrip(c,targetDistance){
     return presentationStrip(reels['reel'+mode+(c+1)],starts[c],targetDistance,targetMatrix[c]).strip;
@@ -98,21 +89,21 @@ async function animateSpin(mode,targetStops){
           const sm=specialMotion(c,now); exactDistance=sm.distance; finished=sm.finished;
         }else{
           const t=Math.min(1,elapsed/baseDurations[c]);
-          exactDistance=totalSteps[c]*progress(t);useBlur=t<.52;finished=elapsed>=baseDurations[c];
+          exactDistance=totalSteps[c]*reelProgress(t);finished=elapsed>=baseDurations[c];
         }
         const whole=Math.floor(exactDistance),frac=exactDistance-whole;
         const realStrip=reels[`reel${mode}${c+1}`],strip=(a&&presentationStrips[c])?presentationStrips[c]:realStrip,center=(starts[c]-whole+strip.length*10)%strip.length;
         if(whole!==lastWhole[c]||useBlur!==lastBlur[c]){lastWhole[c]=whole;lastBlur[c]=useBlur;fillTrack(c,strip,center,useBlur)}
         tracks[c].style.transform=`translate3d(0,${(-16.6666667 + frac*16.6666667).toFixed(5)}%,0)`;
-        const normalT=Math.min(1,elapsed/baseDurations[c]);
-        columns[c].classList.toggle('running',!a&&normalT<.52);columns[c].classList.toggle('slow',!!a||normalT>=.52);
+        // Keep sharp artwork and geometry stable, as in Rampage. No mid-spin
+        // blur/scale/opacity switch or independent column bounce at the handoff.
         if(finished){
           fillTrack(c,strip,a?wrap(starts[c]-a.targetDistance,strip.length):targetStops[c],false);tracks[c].style.transform='translateY(-16.6666667%)';
           // Presentation is deliberately non-blocking: mark gameplay landing first, then notify Spine safely.
-          columns[c].classList.remove('running','slow','anticipating');columns[c].classList.add('settle');
+          columns[c].classList.remove('running','slow','anticipating','settle');
           try{spineSymbols.stopAnticipationFx(c)}catch(_){}
           if(a){const actual=(now-a.wallStart)/1000;anticipationTiming.push(`R${c+1} total anticipation-to-land: ${actual.toFixed(2)}s`);report(`REEL ${c+1}: LANDED · ${actual.toFixed(2)}s`);}
-          setTimeout(()=>columns[c].classList.remove('settle'),75);done[c]=true;
+          done[c]=true;
           // Spine cannot delay or abort reel completion.
           try{spineSymbols.landColumn(c,targetMatrix[c])}catch(err){console.error('Non-fatal Spine landing error',err)}
           landedScatters[c]=targetMatrix[c].filter(sym=>sym==='F').length;

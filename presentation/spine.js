@@ -78,7 +78,7 @@ class SpineSymbolManager{
       await Promise.all(pending);
     }finally{rasterizer.dispose();rasterizer.forceContextLoss()}
   }
-  reelSource(sym){return this.spinSprites.get(sym)||`assets/${sym}.png`}
+  reelSource(sym){return this.spinSprites.get(sym)||`assets/${sym}.webp`}
   reelImage(sym){return spinImages.get(sym)||null}
   whenLandingRendered(){
     if(!pendingPngHides.size)return Promise.resolve();

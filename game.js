@@ -150,7 +150,7 @@ async function doSpin(forced=false){
     // Keep busy AND engine state locked during the entire entry delay.
     await wait(900);
     engine.showFeatureEntry();
-    featureEntryPanel.src=`assets/free/Enter_FreeSpins_Panel_${engine.pendingFreeSpins}.png`;
+    featureEntryPanel.src=`assets/free/Enter_FreeSpins_Panel_${engine.pendingFreeSpins}.webp`;
     setScreen(featureEntry,true);busy=false;
     refreshDebug();
   }else{
