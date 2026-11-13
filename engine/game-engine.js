@@ -1,4 +1,5 @@
 import { createRules } from './rules.js';
+import { advanceLadder } from './ladder.js';
 
 // Owns result selection and money. Presentation receives immutable spin records.
 // All money is stored in integer minor units. No timers or browser APIs belong here.
@@ -16,6 +17,9 @@ export class GameEngine {
     this.featureTotalCents = 0;
     this.freeSpinsLeft = 0;
     this.pendingFreeSpins = 0;
+    this.ladderCount = 0;
+    this.featureSpinsAwarded = 0;
+    this.featureSpinsPlayed = 0;
     this.debugFeature = false;
     this.state = 'START';
     this.activeSpin = null;
@@ -62,16 +66,24 @@ export class GameEngine {
     this.featureTotalCents = 0;
     this.lastWinCents = 0;
     this.freeSpinsLeft = this.pendingFreeSpins;
+    this.ladderCount = 0;
+    this.featureSpinsAwarded = this.pendingFreeSpins;
+    this.featureSpinsPlayed = 0;
     this.state = 'FREE_SPINS';
     return true;
   }
   beginFeatureSpin() {
     if (this.state !== 'FREE_SPINS' || this.activeSpin || this.freeSpinsLeft <= 0) return null;
-    const record = this.record(this.rules.resolve(true), this.debugFeature, true);
+    const resolved = this.rules.resolve(true);
+    const ladder = advanceLadder(this.ladderCount, resolved.result.wPositions.length);
+    const record = this.record({...resolved, ladder}, this.debugFeature, true);
     this.activeSpin = record;
     this.lastWinCents = record.awardCents;
     this.featureTotalCents += record.awardCents;
-    this.freeSpinsLeft--;
+    this.ladderCount = ladder.count;
+    this.featureSpinsAwarded += ladder.extraSpins;
+    this.featureSpinsPlayed++;
+    this.freeSpinsLeft += ladder.extraSpins - 1;
     // Settle each resolved free spin once; screen dismissal never changes credit.
     if (!record.forced) {
       this.creditCents += record.awardCents;

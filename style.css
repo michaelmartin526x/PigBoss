@@ -70,3 +70,16 @@
 .account b{font-size:clamp(12px,4.4cqw,30px)}
 
 .big-win-overlay{position:absolute;inset:0;z-index:25;border:0;padding:0;width:100%;height:100%;background:rgba(10,0,4,.72);cursor:pointer;touch-action:manipulation}.big-win-overlay canvas{display:block;width:100%;height:100%}
+
+/* Feature-only collector ladder. The twelve authored spaces stay aligned. */
+#game.feature-mode #logo{width:78%;left:11%;top:1%}
+#win-ladder{display:none;position:absolute;left:2.5%;top:19.5%;width:95%;aspect-ratio:684/76;z-index:5;pointer-events:none}
+#game.feature-mode #win-ladder{display:block}
+.ladder-frame{display:block;width:100%;height:100%}
+.ladder-token{position:absolute;top:-11.842105%;width:9.356725%;height:100%;object-fit:contain;transform-origin:bottom left;animation:ladderPop .32s ease-out}
+.ladder-token.ladder-bonus{top:-10.526316%}
+.ladder-token[hidden]{display:none}
+#ladder-notice{position:absolute;top:16%;width:100%;text-align:center;z-index:6;pointer-events:none;color:#fff1a4;font-weight:900;font-size:clamp(15px,3.6vw,28px);text-shadow:0 2px 3px #371600;opacity:0}
+#game.feature-mode #ladder-notice.awarded{animation:ladderAward 2.5s both}
+@keyframes ladderPop{from{transform:scale(.25);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes ladderAward{0%{opacity:0;transform:translateY(10%)}12%,85%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-10%)}}

@@ -5,8 +5,11 @@ import { FBXLoader } from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/j
 import { isBigWin } from "./big-win-policy.js";
 export function createBigWin(root){
   let assetsPromise,active=false;
+  const resources=new THREE.LoadingManager();
+  // The FBX embeds the original PNG name; this package ships its WebP copy.
+  resources.setURLModifier(url=>url.replace(/Reflection_Map\.png$/,'Reflection_Map.webp'));
   const load=()=>assetsPromise??=Promise.all([
-    new FBXLoader().loadAsync('assets/bigwin/Coin.fbx'),
+    new FBXLoader(resources).loadAsync('assets/bigwin/Coin.fbx'),
     new THREE.TextureLoader().loadAsync('assets/bigwin/Reflection_Map.webp'),
     (async()=>{
       const manager=new spine.AssetManager('assets/bigwin/');
