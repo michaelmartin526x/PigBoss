@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createWinLadder } from './presentation/win-ladder.js';
 import { isBigWin } from './presentation/big-win-policy.js';
 import { LAYOUT, BLUR_SYMBOLS, DECLARED_RTP } from './engine/config.js';
 import { GameEngine } from './engine/game-engine.js';
@@ -18,6 +19,7 @@ const audioManager=new AudioManager();
 const reelSprites=await loadReelSprites(BLUR_SYMBOLS);
 const game=document.querySelector('#game'), spin=document.querySelector('#spin');
 const winEl=document.querySelector('#win'), creditEl=document.querySelector('#credit'), stakeEl=document.querySelector('#stake'), status=document.querySelector('#status'), debugEl=document.querySelector('#debug-content');
+const winLadder=createWinLadder(game);
 const splash=document.querySelector('#splash'), featureEntry=document.querySelector('#feature-entry'), featureComplete=document.querySelector('#feature-complete');
 
 const featureEntryPanel=document.querySelector('#feature-entry-panel'), featureTotalEl=document.querySelector('#feature-total');
@@ -59,7 +61,7 @@ function draw(mode,stops){currentMatrix=matrixFromStops(mode,stops);for(let c=0;
 
 function diagnosticStats(){
   const sessionRtp=engine.totalStakedCents?engine.totalReturnedCents/engine.totalStakedCents*100:0;
-  return `\n\nSPINE\n${spineSymbols.ready?'READY':'PNG FALLBACK'} · ${spineSymbols.data.size} registered · ${spineSymbols.cellCount()} active${spineSymbols.lastError?'\n'+spineSymbols.lastError:''}\n\nACCOUNTANCY / RTP\nDeclared reference RTP (unverified): ${DECLARED_RTP.toFixed(3)}%\nSession RTP: ${sessionRtp.toFixed(3)}%\nPaid spins: ${engine.paidSpins}\nTotal staked: ${money(engine.totalStakedCents/100)}\nTotal returned: ${money(engine.totalReturnedCents/100)}\nCredit: ${money(engine.creditCents/100)}\nState: ${engine.state}`;
+  return `\n\nSPINE\n${spineSymbols.ready?'READY':'PNG FALLBACK'} · ${spineSymbols.data.size} registered · ${spineSymbols.cellCount()} active${spineSymbols.lastError?'\n'+spineSymbols.lastError:''}\n\nACCOUNTANCY / RTP\nHistorical RTP before ladder (unverified): ${DECLARED_RTP.toFixed(3)}%\nLadder: ${engine.ladderCount}/12 · Awarded spins: ${engine.featureSpinsAwarded} · Played: ${engine.featureSpinsPlayed}\nSession RTP: ${sessionRtp.toFixed(3)}%\nPaid spins: ${engine.paidSpins}\nTotal staked: ${money(engine.totalStakedCents/100)}\nTotal returned: ${money(engine.totalReturnedCents/100)}\nCredit: ${money(engine.creditCents/100)}\nState: ${engine.state}`;
 }
 function refreshDebug(){if(debugEnabled)debugEl.textContent=lastDebugCore+diagnosticStats()}
 function renderDebug(result,stops,m){
@@ -73,7 +75,16 @@ function renderDebug(result,stops,m){
 
 async function presentSpin(record){
   const {mode,stops,result,isFeature,matrix}=record;
-  await animateSpin(mode,stops);draw(mode,stops);
+  let revealedExtraSpins=0;
+  await animateSpin(mode,stops,(_c,symbols)=>{
+    if(!isFeature)return;
+    const extra=winLadder.land(symbols);
+    if(extra){
+      revealedExtraSpins+=extra;
+      freeLeftEl.textContent=engine.freeSpinsLeft-record.ladder.extraSpins+revealedExtraSpins;
+      status.textContent=`FREE SPIN ${engine.featureSpinsPlayed} OF ${engine.featureSpinsAwarded-record.ladder.extraSpins+revealedExtraSpins}`;
+    }
+  });draw(mode,stops);
   const spineEnsure=spineSymbols.ensureMatrix(matrix,'idle');
   // Let the last reel display its matching landing pose before a simultaneous
   // win/collection can replace it. The award has already been settled.
@@ -177,13 +188,17 @@ async function doSpin(forced=false){
 }
 async function startFeature(){
   if(busy||!engine.startFeature())return;
+  winLadder.reset();
   busy=true;spin.disabled=true;setScreen(featureEntry,false);game.classList.add('feature-mode');updateAccount();
   refreshDebug();
   await wait(350);
   while(engine.state==='FREE_SPINS'){
-    status.textContent=`FREE SPIN ${engine.pendingFreeSpins-engine.freeSpinsLeft+1} OF ${engine.pendingFreeSpins}`;
+    status.textContent=`FREE SPIN ${engine.featureSpinsPlayed+1} OF ${engine.featureSpinsAwarded}`;
     const record=engine.beginFeatureSpin();
+    winLadder.startSpin(record);
+    freeLeftEl.textContent=engine.freeSpinsLeft-record.ladder.extraSpins;
     await safelyPresent(record);
+    winLadder.finishSpin();
     engine.completeFeatureSpin(record.id);updateAccount();refreshDebug();
     status.textContent=record.result.collectorActive?`COLLECT x${record.result.collectorMultiplier}`:(record.awardCents>0?`FREE SPIN WIN ${money(record.awardCents/100)}`:'FREE SPIN');
     await playBigWin(record.awardCents);

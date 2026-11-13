@@ -3,7 +3,7 @@ import { anticipationPlan, anticipationDistance, presentationStrip, wrap } from 
 import { reelProgress, reelVelocity } from './reel-motion.js';
 
 export function createReelAnimator({reels,matrixFromStops,spineSymbols,columns,tracks,fillTrack,report}) {
-async function animateSpin(mode,targetStops){
+async function animateSpin(mode,targetStops,onColumnLanded=()=>{}){
   spineSymbols.resetToPng();
   const baseDurations=MOTION.durations;
   const targetMatrix=matrixFromStops(mode,targetStops);
@@ -106,6 +106,7 @@ async function animateSpin(mode,targetStops){
           done[c]=true;
           // Spine cannot delay or abort reel completion.
           try{spineSymbols.landColumn(c,targetMatrix[c])}catch(err){console.error('Non-fatal Spine landing error',err)}
+          onColumnLanded(c,targetMatrix[c]);
           landedScatters[c]=targetMatrix[c].filter(sym=>sym==='F').length;
           // Only a physically landed second scatter can start the sequence.
           beginSequence(now);
